@@ -1,0 +1,4 @@
+# AutoDev - Version 1
+# Version 1 uses Python's standard library (Python 3.8+) with zero external dependencies.
+# Optional dependencies for enhanced terminal formatting or future AI integrations:
+# rich>=13.0.0
