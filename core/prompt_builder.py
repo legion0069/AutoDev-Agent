@@ -1,10 +1,9 @@
 """
-prompt_builder.py - Engineering Prompt Synthesis Engine for AutoDev
+prompt_builder.py - Engineering Prompt Synthesis Engine for AutoDev (v1.3)
 
 Responsible for transforming project context (metadata, phases, directory tree,
-and existing codebase files) and a target atomic Task into a production-grade,
-structured engineering prompt ready for any foundation model (OpenAI, Gemini,
-Claude, DeepSeek).
+existing codebase files), relevant engineering memory (ContextInjector),
+and a target atomic Task into a production-grade, structured engineering prompt.
 """
 
 from __future__ import annotations
@@ -12,29 +11,47 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 # Ensure project root is available on sys.path for direct execution
 if __name__ == "__main__" and __package__ is None:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from agents.task_planner_agent import Task
+if TYPE_CHECKING:
+    from agents.task_planner_agent import Task
+
+from core.context_injector import ContextInjector
+from core.memory_manager import MemoryManager
 
 
 class PromptBuilder:
     """
     Constructs comprehensive, standardized engineering prompts for LLM code generation.
-    Enforces strict architectural boundaries, SOLID principles, and structured JSON output.
+    Integrates the ContextInjector to inject only the most relevant historical engineering
+    knowledge, architectural decisions, and bug lessons into the prompt.
     """
 
-    def __init__(self, max_file_chars: int = 4000) -> None:
+    def __init__(
+        self,
+        max_file_chars: int = 4000,
+        context_injector: Optional[ContextInjector] = None,
+        memory_manager: Optional[MemoryManager] = None,
+    ) -> None:
         """
         Initializes the PromptBuilder.
 
         Args:
             max_file_chars: Maximum characters to include per source file before truncation.
+            context_injector: Optional ContextInjector instance.
+            memory_manager: Optional MemoryManager instance used to create a ContextInjector.
         """
         self.max_file_chars = max_file_chars
+        if context_injector is not None:
+            self.context_injector = context_injector
+        elif memory_manager is not None:
+            self.context_injector = ContextInjector(memory_manager=memory_manager)
+        else:
+            self.context_injector = ContextInjector(memory_manager=None)
 
     # -------------------------------------------------------------------------
     # Section Builders
@@ -51,7 +68,7 @@ class PromptBuilder:
             "You are an Elite Principal Software Engineer and autonomous core developer in the\n"
             "AutoDev system. Your objective is to implement clean, production-ready, highly robust\n"
             "software modules that precisely fulfill the assigned engineering task while strictly\n"
-            "adhering to existing architectural patterns and project constraints."
+            "adhering to existing architectural patterns, project memory, and constraints."
         )
 
     def build_project_section(self, context: Dict[str, Any]) -> str:
@@ -108,19 +125,42 @@ class PromptBuilder:
             f"Phase Deliverables:\n{deliv_text}"
         )
 
+    def build_memory_section(
+        self,
+        context: Dict[str, Any],
+        task: Union[Task, Dict[str, Any]],
+        max_tokens: int = 2500,
+    ) -> Optional[str]:
+        """
+        Constructs the RELEVANT PROJECT MEMORY section using ContextInjector.
+        Returns None if no relevant memories are available.
+        """
+        injector = context.get("context_injector") or self.context_injector
+        if not injector:
+            return None
+
+        memory_block = injector.build_prompt_context(
+            context=context,
+            task=task,
+            max_tokens=max_tokens,
+        )
+        if memory_block and memory_block.strip():
+            return memory_block
+        return None
+
     def build_task_section(self, task: Union[Task, Dict[str, Any]]) -> str:
         """
         Constructs the specific CURRENT TASK execution section.
         """
-        if isinstance(task, Task):
-            task_id = task.id
-            title = task.title
-            description = task.description
-            priority = task.priority
-            dependencies = task.dependencies
-            estimated_files = task.estimated_files
-            estimated_duration = task.estimated_duration
-        else:
+        if hasattr(task, "id") and hasattr(task, "title"):
+            task_id = str(getattr(task, "id", "UNKNOWN-TASK"))
+            title = str(getattr(task, "title", ""))
+            description = str(getattr(task, "description", ""))
+            priority = getattr(task, "priority", 1)
+            dependencies = getattr(task, "dependencies", [])
+            estimated_files = getattr(task, "estimated_files", [])
+            estimated_duration = getattr(task, "estimated_duration", "N/A")
+        elif isinstance(task, dict):
             task_id = task.get("id", "UNKNOWN-TASK")
             title = task.get("title", "")
             description = task.get("description", "")
@@ -128,13 +168,21 @@ class PromptBuilder:
             dependencies = task.get("dependencies", [])
             estimated_files = task.get("estimated_files", [])
             estimated_duration = task.get("estimated_duration", "N/A")
+        else:
+            task_id = "UNKNOWN-TASK"
+            title = str(task)
+            description = ""
+            priority = 1
+            dependencies = []
+            estimated_files = []
+            estimated_duration = "N/A"
 
         deps_text = ", ".join(dependencies) if dependencies else "None (Independent)"
         files_text = ", ".join(estimated_files) if estimated_files else "To be determined by task scope"
 
         return (
             "================================================================================\n"
-            "5. CURRENT TASK TO IMPLEMENT\n"
+            "CURRENT TASK TO IMPLEMENT\n"
             "================================================================================\n"
             f"Task ID            : {task_id}\n"
             f"Title              : {title}\n"
@@ -144,6 +192,67 @@ class PromptBuilder:
             f"Estimated Duration : {estimated_duration}\n\n"
             f"Task Specification:\n{description}"
         )
+
+    def build_feedback_section(self, context: Dict[str, Any]) -> Optional[str]:
+        """
+        Constructs the SELF-HEALING RETRY FEEDBACK section if prior attempt feedback exists.
+        """
+        feedback = context.get("retry_feedback")
+        if not feedback:
+            return None
+
+        attempt = feedback.get("attempt", 2)
+        review_info = feedback.get("previous_review", {})
+        test_info = feedback.get("previous_tests")
+
+        feedback_parts: List[str] = [
+            "================================================================================\n"
+            f"RETRY & DEFECT REMEDIATION FEEDBACK (Attempt {attempt})\n"
+            "================================================================================"
+        ]
+
+        if review_info:
+            score = review_info.get("score", 0)
+            summary = review_info.get("summary", "Review completed with issues.")
+            feedback_parts.append(f"Previous Code Quality Score : {score}/100")
+            feedback_parts.append(f"Reviewer Summary            : {summary}")
+
+            issues = review_info.get("issues", [])
+            if issues:
+                feedback_parts.append("\nDetected Issues to Fix:")
+                for idx, iss in enumerate(issues, start=1):
+                    if isinstance(iss, dict):
+                        sev = iss.get("severity", "ISSUE")
+                        loc = f"{iss.get('file', 'unknown')}:{iss.get('line') or '?'}"
+                        desc = iss.get("description", "")
+                        rec = iss.get("recommendation", "")
+                        feedback_parts.append(f"  {idx}. [{sev}] ({loc}) {desc}")
+                        if rec:
+                            feedback_parts.append(f"     Fix: {rec}")
+
+            recs = review_info.get("recommendations", [])
+            if recs:
+                feedback_parts.append("\nRecommendations:")
+                for r in recs:
+                    feedback_parts.append(f"  * {r}")
+
+        if test_info:
+            passed = test_info.get("passed", 0)
+            failed = test_info.get("failed", 0)
+            stderr = test_info.get("stderr", "")
+            stdout = test_info.get("stdout", "")
+            feedback_parts.append(f"\nAutomated Test Results : {passed} passed, {failed} failed")
+            if stderr or stdout:
+                preview = (stderr or stdout)[:600]
+                feedback_parts.append(f"Test Error Output:\n{preview}")
+
+        feedback_parts.append(
+            "\nREMEDIATION INSTRUCTION:\n"
+            "Improve and fix the implementation to resolve all identified issues and test failures above.\n"
+            "Do NOT restart from scratch; preserve working architecture and correct the specific defects."
+        )
+
+        return "\n".join(feedback_parts)
 
     def build_directory_section(self, directory_tree: List[str]) -> str:
         """
@@ -156,7 +265,7 @@ class PromptBuilder:
 
         return (
             "================================================================================\n"
-            "6. EXISTING DIRECTORY STRUCTURE\n"
+            "EXISTING DIRECTORY STRUCTURE\n"
             "================================================================================\n"
             f"{tree_text}"
         )
@@ -183,7 +292,7 @@ class PromptBuilder:
 
         return (
             "================================================================================\n"
-            "7. EXISTING SOURCE FILES\n"
+            "EXISTING SOURCE FILES\n"
             "================================================================================\n"
             f"{files_text}"
         )
@@ -194,7 +303,7 @@ class PromptBuilder:
         """
         return (
             "================================================================================\n"
-            "8. ENGINEERING CONSTRAINTS\n"
+            "ENGINEERING CONSTRAINTS\n"
             "================================================================================\n"
             "1. Architecture Integrity : Follow the established project layout, patterns, and conventions.\n"
             "2. Scoped Modifications   : Modify or create ONLY the files necessary for this specific task.\n"
@@ -226,7 +335,7 @@ class PromptBuilder:
 
         return (
             "================================================================================\n"
-            "9. REQUIRED JSON OUTPUT FORMAT\n"
+            "REQUIRED JSON OUTPUT FORMAT\n"
             "================================================================================\n"
             "You MUST respond with a single, strictly valid JSON object matching this schema:\n\n"
             f"{rendered_schema}\n\n"
@@ -245,6 +354,19 @@ class PromptBuilder:
         """
         Assembles all prompt sections into a unified engineering prompt string.
 
+        Layout:
+        1. System Role
+        2. Project Information
+        3. Technology Stack
+        4. Current Development Phase
+        5. Relevant Project Memory (injected if relevant memories exist)
+        6. Current Task to Implement
+        7. Retry & Defect Remediation Feedback (if retry attempt)
+        8. Existing Directory Structure
+        9. Existing Source Files
+        10. Engineering Constraints
+        11. Required JSON Output Format
+
         Args:
             context: Context dictionary produced by ContextBuilder.
             task: Task object or dictionary produced by TaskPlannerAgent.
@@ -257,12 +379,28 @@ class PromptBuilder:
             self.build_project_section(context),
             self.build_technology_section(context),
             self.build_phase_section(context),
-            self.build_task_section(task),
+        ]
+
+        # Injected Relevant Project Memory
+        memory_sec = self.build_memory_section(context, task)
+        if memory_sec:
+            sections.append(memory_sec)
+
+        # Current Task
+        sections.append(self.build_task_section(task))
+
+        # Retry feedback if applicable
+        feedback_sec = self.build_feedback_section(context)
+        if feedback_sec:
+            sections.append(feedback_sec)
+
+        # Environment & Constraints
+        sections.extend([
             self.build_directory_section(context.get("directory_tree", [])),
             self.build_files_section(context.get("project_files", {})),
             self.build_constraints_section(),
             self.build_output_schema_section(),
-        ]
+        ])
 
         return "\n\n".join(sections)
 
