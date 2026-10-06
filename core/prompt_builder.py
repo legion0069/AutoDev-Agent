@@ -1,9 +1,10 @@
 """
-prompt_builder.py - Engineering Prompt Synthesis Engine for AutoDev (v1.3)
+prompt_builder.py - Engineering Prompt Synthesis Engine for AutoDev (v1.5)
 
 Responsible for transforming project context (metadata, phases, directory tree,
 existing codebase files), relevant engineering memory (ContextInjector),
-and a target atomic Task into a production-grade, structured engineering prompt.
+code-aware symbol context (CodeContextRetriever), and blast-radius risk analysis
+(ImpactAnalyzer) into a production-grade, structured engineering prompt.
 """
 
 from __future__ import annotations
@@ -11,7 +12,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Union
 
 # Ensure project root is available on sys.path for direct execution
 if __name__ == "__main__" and __package__ is None:
@@ -20,15 +21,23 @@ if __name__ == "__main__" and __package__ is None:
 if TYPE_CHECKING:
     from agents.task_planner_agent import Task
 
+from core.code_context_retriever import (
+    CodeContextResult,
+    CodeContextRetriever,
+    RelevantFile,
+    RelevantSymbol,
+)
 from core.context_injector import ContextInjector
+from core.impact_analyzer import ImpactAnalyzer, ImpactReport, RiskLevel
 from core.memory_manager import MemoryManager
+from core.symbol_graph import SymbolGraph
 
 
 class PromptBuilder:
     """
     Constructs comprehensive, standardized engineering prompts for LLM code generation.
-    Integrates the ContextInjector to inject only the most relevant historical engineering
-    knowledge, architectural decisions, and bug lessons into the prompt.
+    Integrates ContextInjector (historical engineering memory), CodeContextRetriever
+    (minimal relevant code slices), and ImpactAnalyzer (blast radius & breaking change risks).
     """
 
     def __init__(
@@ -36,6 +45,9 @@ class PromptBuilder:
         max_file_chars: int = 4000,
         context_injector: Optional[ContextInjector] = None,
         memory_manager: Optional[MemoryManager] = None,
+        code_context_retriever: Optional[CodeContextRetriever] = None,
+        impact_analyzer: Optional[ImpactAnalyzer] = None,
+        symbol_graph: Optional[SymbolGraph] = None,
     ) -> None:
         """
         Initializes the PromptBuilder.
@@ -44,14 +56,35 @@ class PromptBuilder:
             max_file_chars: Maximum characters to include per source file before truncation.
             context_injector: Optional ContextInjector instance.
             memory_manager: Optional MemoryManager instance used to create a ContextInjector.
+            code_context_retriever: Optional CodeContextRetriever instance.
+            impact_analyzer: Optional ImpactAnalyzer instance.
+            symbol_graph: Optional SymbolGraph instance used to construct retriever & analyzer.
         """
         self.max_file_chars = max_file_chars
+
+        # Memory Context Injector
         if context_injector is not None:
             self.context_injector = context_injector
         elif memory_manager is not None:
             self.context_injector = ContextInjector(memory_manager=memory_manager)
         else:
             self.context_injector = ContextInjector(memory_manager=None)
+
+        # Code Context Retriever
+        if code_context_retriever is not None:
+            self.code_context_retriever = code_context_retriever
+        elif symbol_graph is not None:
+            self.code_context_retriever = CodeContextRetriever(symbol_graph=symbol_graph)
+        else:
+            self.code_context_retriever = None
+
+        # Impact Analyzer
+        if impact_analyzer is not None:
+            self.impact_analyzer = impact_analyzer
+        elif symbol_graph is not None:
+            self.impact_analyzer = ImpactAnalyzer(symbol_graph=symbol_graph)
+        else:
+            self.impact_analyzer = None
 
     # -------------------------------------------------------------------------
     # Section Builders
@@ -182,7 +215,7 @@ class PromptBuilder:
 
         return (
             "================================================================================\n"
-            "CURRENT TASK TO IMPLEMENT\n"
+            "6. CURRENT TASK TO IMPLEMENT\n"
             "================================================================================\n"
             f"Task ID            : {task_id}\n"
             f"Title              : {title}\n"
@@ -192,6 +225,115 @@ class PromptBuilder:
             f"Estimated Duration : {estimated_duration}\n\n"
             f"Task Specification:\n{description}"
         )
+
+    def build_impact_section(
+        self,
+        context: Dict[str, Any],
+        task: Union[Task, Dict[str, Any]],
+    ) -> Optional[str]:
+        """
+        Constructs the CODE IMPACT ANALYSIS section.
+        Omitted if no impact data or graph is available.
+        """
+        report: Optional[ImpactReport] = None
+
+        if "impact_report" in context and isinstance(context["impact_report"], ImpactReport):
+            report = context["impact_report"]
+        elif "impact_analyzer" in context and hasattr(context["impact_analyzer"], "analyze_task"):
+            report = context["impact_analyzer"].analyze_task(task)
+        elif self.impact_analyzer is not None:
+            report = self.impact_analyzer.analyze_task(task)
+        elif "symbol_graph" in context and context["symbol_graph"] is not None:
+            analyzer = ImpactAnalyzer(symbol_graph=context["symbol_graph"])
+            report = analyzer.analyze_task(task)
+
+        if not report:
+            return None
+
+        # If zero impact score and no affected elements, omit cleanly
+        if (
+            report.impact_score == 0.0
+            and not report.affected_files
+            and not report.affected_symbols
+            and not report.breaking_change_risks
+        ):
+            return None
+
+        lines: List[str] = [
+            "================================================================================",
+            "7. CODE IMPACT ANALYSIS",
+            "================================================================================",
+            f"Target                  : {report.target}",
+            f"Risk Level              : {report.risk_level} (Impact Score: {report.impact_score:.1f}/100)",
+            f"Affected Files          : {', '.join(report.affected_files) if report.affected_files else 'None'}",
+            f"Affected Symbols        : {', '.join(report.affected_symbols) if report.affected_symbols else 'None'}",
+            f"Callers                 : {', '.join(report.callers) if report.callers else 'None'}",
+            f"Direct Dependents       : {', '.join(report.direct_dependents) if report.direct_dependents else 'None'}",
+            f"Transitive Dependents   : {', '.join(report.transitive_dependents) if report.transitive_dependents else 'None'}",
+            f"Subclasses              : {', '.join(report.subclasses) if report.subclasses else 'None'}",
+            f"Implementations         : {', '.join(report.implementations) if report.implementations else 'None'}",
+            f"Affected Tests          : {', '.join(report.affected_tests) if report.affected_tests else 'None'}",
+        ]
+
+        if report.breaking_change_risks:
+            lines.append("\nPotential Breaking Changes:")
+            for r in report.breaking_change_risks:
+                lines.append(f"  - {r}")
+
+        if report.recommended_validation:
+            lines.append("\nRecommended Validation:")
+            for v in report.recommended_validation:
+                lines.append(f"  * {v}")
+
+        return "\n".join(lines)
+
+    def build_code_context_section(
+        self,
+        context: Dict[str, Any],
+        task: Union[Task, Dict[str, Any]],
+        max_tokens: int = 6000,
+    ) -> Optional[str]:
+        """
+        Constructs the RELEVANT CODE CONTEXT section containing focused symbols and file slices.
+        Omitted if no relevant code is retrieved.
+        """
+        result: Optional[CodeContextResult] = None
+
+        if "code_context_result" in context and isinstance(context["code_context_result"], CodeContextResult):
+            result = context["code_context_result"]
+        elif "code_context_retriever" in context and hasattr(context["code_context_retriever"], "retrieve"):
+            result = context["code_context_retriever"].retrieve(context, task, max_tokens=max_tokens)
+        elif self.code_context_retriever is not None:
+            result = self.code_context_retriever.retrieve(context, task, max_tokens=max_tokens)
+        elif "symbol_graph" in context and context["symbol_graph"] is not None:
+            retriever = CodeContextRetriever(symbol_graph=context["symbol_graph"])
+            result = retriever.retrieve(context, task, max_tokens=max_tokens)
+
+        if not result or (not result.relevant_files and not result.relevant_symbols):
+            return None
+
+        lines: List[str] = [
+            "================================================================================",
+            "8. RELEVANT CODE CONTEXT",
+            "================================================================================",
+        ]
+        if result.summary:
+            lines.append(f"Summary: {result.summary}\n")
+
+        for file_item in result.relevant_files:
+            syms_for_file = [s for s in result.relevant_symbols if s.file == file_item.path]
+            lines.append(f"FILE: {file_item.path}")
+            if syms_for_file:
+                sym_names = ", ".join(s.qualified_name for s in syms_for_file)
+                lines.append(f"SYMBOL: {sym_names}")
+                if len(syms_for_file) == 1 and syms_for_file[0].line > 0:
+                    lines.append(f"LINES: {syms_for_file[0].line}-{syms_for_file[0].end_line}")
+            lines.append(f"RELATIONSHIP: {file_item.relationship}")
+            lines.append("")
+            lines.append(file_item.content)
+            lines.append("--------------------------------------------------------------------------------")
+
+        return "\n".join(lines)
 
     def build_feedback_section(self, context: Dict[str, Any]) -> Optional[str]:
         """
@@ -207,7 +349,7 @@ class PromptBuilder:
 
         feedback_parts: List[str] = [
             "================================================================================\n"
-            f"RETRY & DEFECT REMEDIATION FEEDBACK (Attempt {attempt})\n"
+            f"9. RETRY & DEFECT REMEDIATION FEEDBACK (Attempt {attempt})\n"
             "================================================================================"
         ]
 
@@ -265,20 +407,30 @@ class PromptBuilder:
 
         return (
             "================================================================================\n"
-            "EXISTING DIRECTORY STRUCTURE\n"
+            "10. EXISTING DIRECTORY STRUCTURE\n"
             "================================================================================\n"
             f"{tree_text}"
         )
 
-    def build_files_section(self, project_files: Dict[str, str]) -> str:
+    def build_files_section(
+        self,
+        project_files: Dict[str, str],
+        excluded_files: Optional[Set[str]] = None,
+        has_code_context: bool = False,
+    ) -> str:
         """
-        Constructs the EXISTING SOURCE FILES section with safety truncation for large files.
+        Constructs the EXISTING / ADDITIONAL SOURCE FILES section with safety truncation.
         """
+        section_title = "11. ADDITIONAL PROJECT FILES" if has_code_context else "11. EXISTING SOURCE FILES"
+
         if not project_files:
             files_text = "(No existing text source files in project workspace yet)"
         else:
             file_blocks: List[str] = []
             for file_path, content in sorted(project_files.items()):
+                if excluded_files and file_path in excluded_files:
+                    continue
+
                 if len(content) > self.max_file_chars:
                     truncated = content[: self.max_file_chars]
                     rendered_content = f"{truncated}\n... [TRUNCATED: File exceeds {self.max_file_chars} characters] ..."
@@ -288,11 +440,15 @@ class PromptBuilder:
                 file_blocks.append(
                     f"--- File: {file_path} ---\n{rendered_content}\n--- End of File ---"
                 )
-            files_text = "\n\n".join(file_blocks)
+
+            if not file_blocks:
+                files_text = "(All relevant source files provided in RELEVANT CODE CONTEXT above)"
+            else:
+                files_text = "\n\n".join(file_blocks)
 
         return (
             "================================================================================\n"
-            "EXISTING SOURCE FILES\n"
+            f"{section_title}\n"
             "================================================================================\n"
             f"{files_text}"
         )
@@ -303,17 +459,20 @@ class PromptBuilder:
         """
         return (
             "================================================================================\n"
-            "ENGINEERING CONSTRAINTS\n"
+            "12. ENGINEERING CONSTRAINTS\n"
             "================================================================================\n"
             "1. Architecture Integrity : Follow the established project layout, patterns, and conventions.\n"
             "2. Scoped Modifications   : Modify or create ONLY the files necessary for this specific task.\n"
             "3. Functional Continuity  : Preserve existing interfaces and functionality without regressions.\n"
-            "4. SOLID Principles       : Write modular, single-responsibility, highly extensible code.\n"
-            "5. Quality & Type Safety  : Write complete production-ready code with type annotations and docstrings.\n"
-            "6. Strict Output Standard : Provide COMPLETE file contents (no placeholders, no ellipsis '...', no snippets).\n"
-            "7. Technology Stack Rule  : Use only the specified stack and standard/configured libraries.\n"
-            "8. Pure JSON Output       : Return ONLY a valid JSON object matching the required schema.\n"
-            "9. No Markdown Enclosing  : Do NOT wrap the JSON in markdown fences (```json or ```). Return raw JSON only."
+            "4. Impact Inspection      : Inspect impact information before changing public APIs; preserve compatibility.\n"
+            "5. Dependent Updates      : Update dependent code and tests when interfaces or behavior change.\n"
+            "6. Context Discipline     : Do not invent files or symbols not present in context unless necessary.\n"
+            "7. SOLID Principles       : Write modular, single-responsibility, highly extensible code.\n"
+            "8. Quality & Type Safety  : Write complete production-ready code with type annotations and docstrings.\n"
+            "9. Strict Output Standard : Provide COMPLETE file contents (no placeholders, no ellipsis '...', no snippets).\n"
+            "10. Technology Stack Rule : Use only the specified stack and standard/configured libraries.\n"
+            "11. Pure JSON Output      : Return ONLY a valid JSON object matching the required schema.\n"
+            "12. No Markdown Enclosing : Do NOT wrap the JSON in markdown fences (```json or ```). Return raw JSON only."
         )
 
     def build_output_schema_section(self) -> str:
@@ -335,7 +494,7 @@ class PromptBuilder:
 
         return (
             "================================================================================\n"
-            "REQUIRED JSON OUTPUT FORMAT\n"
+            "13. REQUIRED JSON OUTPUT FORMAT\n"
             "================================================================================\n"
             "You MUST respond with a single, strictly valid JSON object matching this schema:\n\n"
             f"{rendered_schema}\n\n"
@@ -352,20 +511,22 @@ class PromptBuilder:
         task: Union[Task, Dict[str, Any]],
     ) -> str:
         """
-        Assembles all prompt sections into a unified engineering prompt string.
+        Assembles all prompt sections into a unified 13-section engineering prompt.
 
-        Layout:
-        1. System Role
-        2. Project Information
-        3. Technology Stack
-        4. Current Development Phase
-        5. Relevant Project Memory (injected if relevant memories exist)
-        6. Current Task to Implement
-        7. Retry & Defect Remediation Feedback (if retry attempt)
-        8. Existing Directory Structure
-        9. Existing Source Files
-        10. Engineering Constraints
-        11. Required JSON Output Format
+        Layout (v1.5):
+        1. SYSTEM ROLE
+        2. PROJECT INFORMATION
+        3. TECHNOLOGY STACK
+        4. CURRENT DEVELOPMENT PHASE
+        5. RELEVANT PROJECT MEMORY (if available)
+        6. CURRENT TASK TO IMPLEMENT
+        7. CODE IMPACT ANALYSIS (if available)
+        8. RELEVANT CODE CONTEXT (if available)
+        9. RETRY & DEFECT REMEDIATION FEEDBACK (if retry attempt)
+        10. EXISTING DIRECTORY STRUCTURE
+        11. ADDITIONAL / EXISTING SOURCE FILES
+        12. ENGINEERING CONSTRAINTS
+        13. REQUIRED JSON OUTPUT FORMAT
 
         Args:
             context: Context dictionary produced by ContextBuilder.
@@ -381,23 +542,51 @@ class PromptBuilder:
             self.build_phase_section(context),
         ]
 
-        # Injected Relevant Project Memory
+        # 5. Injected Relevant Project Memory
         memory_sec = self.build_memory_section(context, task)
         if memory_sec:
             sections.append(memory_sec)
 
-        # Current Task
+        # 6. Current Task
         sections.append(self.build_task_section(task))
 
-        # Retry feedback if applicable
+        # 7. Code Impact Analysis
+        impact_sec = self.build_impact_section(context, task)
+        if impact_sec:
+            sections.append(impact_sec)
+
+        # 8. Relevant Code Context
+        code_context_sec = self.build_code_context_section(context, task)
+        excluded_files: Set[str] = set()
+        has_code_context = False
+
+        if code_context_sec:
+            sections.append(code_context_sec)
+            has_code_context = True
+            # Extract excluded files if code context result was stored
+            result_obj = context.get("code_context_result")
+            if result_obj and hasattr(result_obj, "relevant_files"):
+                excluded_files = {f.path for f in result_obj.relevant_files}
+
+        # 9. Retry feedback if applicable
         feedback_sec = self.build_feedback_section(context)
         if feedback_sec:
             sections.append(feedback_sec)
 
-        # Environment & Constraints
+        # 10. Existing Directory Structure
+        sections.append(self.build_directory_section(context.get("directory_tree", [])))
+
+        # 11. Additional / Existing Source Files
+        sections.append(
+            self.build_files_section(
+                context.get("project_files", {}),
+                excluded_files=excluded_files if has_code_context else None,
+                has_code_context=has_code_context,
+            )
+        )
+
+        # 12. Engineering Constraints & 13. Output Schema
         sections.extend([
-            self.build_directory_section(context.get("directory_tree", [])),
-            self.build_files_section(context.get("project_files", {})),
             self.build_constraints_section(),
             self.build_output_schema_section(),
         ])
