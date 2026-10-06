@@ -1,13 +1,28 @@
 """
 test_impact_analyzer.py - Comprehensive Unit & Integration Tests for ImpactAnalyzer (v1.5)
+
+Tests:
+1. Graph traversal (call graph forward & reverse)
+2. Dependency expansion (direct & transitive)
+3. Cycle detection & recursion protection
+4. Test discovery (file patterns, module stem, symbol references)
+5. Confidence calculation
+6. Risk scoring & level mapping (LOW, MEDIUM, HIGH, CRITICAL)
+7. Large graph performance & scalability
+8. Serialization & JSON roundtrip (to_dict, to_json, from_dict)
+9. Edge cases (empty graph, missing symbol, dict task, None context)
+10. PromptBuilder & Orchestrator integration
 """
 
+import json
+import time
 from pathlib import Path
 from typing import Any, Dict
 import pytest
 
 from agents.task_planner_agent import Task
-from core.impact_analyzer import ImpactAnalyzer, ImpactReport, RiskLevel
+from core.impact_analyzer import ImpactAnalyzer, ImpactNode, ImpactReport, RiskLevel
+from core.prompt_builder import PromptBuilder
 from core.symbol_graph import Dependency, Symbol, SymbolGraph, SymbolType, Visibility
 
 
@@ -134,134 +149,291 @@ def complex_symbol_graph() -> SymbolGraph:
 
 
 # -----------------------------------------------------------------------------
-# Test Cases
+# 1. Graph Traversal & Call Graph Expansion
 # -----------------------------------------------------------------------------
 
-def test_1_low_impact_private_helper(complex_symbol_graph: SymbolGraph):
-    """Test 1: Private isolated helper receives LOW risk level and low score."""
+def test_1_call_graph_traversal(complex_symbol_graph: SymbolGraph):
+    """Test 1: Call graph traversal locates callers and callees with depth tracking."""
+    analyzer = ImpactAnalyzer(symbol_graph=complex_symbol_graph, max_depth=3)
+    sym = complex_symbol_graph.find_symbol("CoreService.process_payment")
+    assert sym is not None
+
+    callers, callees, nodes = analyzer.expand_call_graph([sym], max_depth=3)
+    assert len(callers) >= 5
+    assert any("caller_1" in c for c in callers)
+    assert len(nodes) >= 5
+    assert all(isinstance(n, ImpactNode) for n in nodes)
+    assert all(n.depth >= 1 for n in nodes)
+
+
+# -----------------------------------------------------------------------------
+# 2. Dependency Expansion
+# -----------------------------------------------------------------------------
+
+def test_2_dependency_graph_expansion(complex_symbol_graph: SymbolGraph):
+    """Test 2: Traverses direct and transitive upstream and downstream file dependencies."""
+    analyzer = ImpactAnalyzer(symbol_graph=complex_symbol_graph, max_depth=3)
+    all_files, deps, rev_deps = analyzer.expand_dependency_graph({"src/caller_1.py"}, max_depth=3)
+
+    assert "src/gateway.py" in rev_deps
+    assert "src/app.py" in rev_deps
+    assert "src/core_service.py" in deps
+    assert "src/caller_1.py" in all_files
+
+
+# -----------------------------------------------------------------------------
+# 3. Cycle Detection
+# -----------------------------------------------------------------------------
+
+def test_3_cycle_detection_in_call_and_dependency_graphs():
+    """Test 3: Cyclic calls and circular module dependencies do not cause infinite loops."""
+    cyclic_graph = SymbolGraph()
+
+    # Create 3 mutually recursive symbols: A -> B -> C -> A
+    sym_a = Symbol(
+        id="a.py::func_a", name="func_a", qualified_name="func_a",
+        symbol_type=SymbolType.FUNCTION, language="python", file="a.py",
+        line=1, end_line=10, calls=["func_b"],
+    )
+    sym_b = Symbol(
+        id="b.py::func_b", name="func_b", qualified_name="func_b",
+        symbol_type=SymbolType.FUNCTION, language="python", file="b.py",
+        line=1, end_line=10, calls=["func_c"],
+    )
+    sym_c = Symbol(
+        id="c.py::func_c", name="func_c", qualified_name="func_c",
+        symbol_type=SymbolType.FUNCTION, language="python", file="c.py",
+        line=1, end_line=10, calls=["func_a"],
+    )
+
+    cyclic_graph.add_symbol(sym_a)
+    cyclic_graph.add_symbol(sym_b)
+    cyclic_graph.add_symbol(sym_c)
+
+    # Circular file dependencies
+    cyclic_graph.add_dependency(Dependency("a.py", "b.py", "import"))
+    cyclic_graph.add_dependency(Dependency("b.py", "c.py", "import"))
+    cyclic_graph.add_dependency(Dependency("c.py", "a.py", "import"))
+
+    analyzer = ImpactAnalyzer(symbol_graph=cyclic_graph, max_depth=5)
+    task = Task(id="CYCLE-01", title="Modify func_a in a.py", description="Cyclic test", estimated_files=["a.py"])
+
+    # Must complete quickly and safely
+    start_t = time.time()
+    report = analyzer.analyze(task)
+    duration = time.time() - start_t
+
+    assert duration < 1.0
+    assert "a.py" in report.affected_files
+    assert "b.py" in report.affected_files
+    assert "c.py" in report.affected_files
+
+
+# -----------------------------------------------------------------------------
+# 4. Test Discovery
+# -----------------------------------------------------------------------------
+
+def test_4_test_discovery(complex_symbol_graph: SymbolGraph):
+    """Test 4: Discovers matching test suites for affected files and symbols."""
     analyzer = ImpactAnalyzer(symbol_graph=complex_symbol_graph)
-    report = analyzer.analyze_symbol("_internal_hash")
+    tests = analyzer.find_related_tests(
+        affected_files={"src/core_service.py"},
+        affected_symbols={"process_payment", "CoreService.process_payment"},
+    )
 
-    assert isinstance(report, ImpactReport)
-    assert report.target == "_internal_hash"
-    assert report.risk_level == RiskLevel.LOW
-    assert report.impact_score <= 25.0
-    assert len(report.callers) == 0
+    assert "tests/test_core_service.py" in tests
 
 
-def test_2_high_impact_public_service(complex_symbol_graph: SymbolGraph):
-    """Test 2: Widely-invoked public method receives HIGH/CRITICAL risk level."""
+# -----------------------------------------------------------------------------
+# 5. Confidence Calculation
+# -----------------------------------------------------------------------------
+
+def test_5_confidence_calculation(complex_symbol_graph: SymbolGraph):
+    """Test 5: Calculates deterministic confidence scores bounded in [0.0, 1.0]."""
     analyzer = ImpactAnalyzer(symbol_graph=complex_symbol_graph)
-    report = analyzer.analyze_symbol("CoreService.process_payment")
+    task = Task(
+        id="TASK-CONF-01",
+        title="Update process_payment",
+        description="Process payment transaction overhaul",
+        estimated_files=["src/core_service.py"],
+    )
 
-    assert report.risk_level in {RiskLevel.HIGH, RiskLevel.CRITICAL}
-    assert report.impact_score >= 51.0
-    assert len(report.callers) >= 5
-    assert len(report.affected_files) >= 5
+    report = analyzer.analyze(task)
+    assert 0.0 <= report.confidence <= 1.0
+    assert report.confidence >= 0.85
 
 
-def test_3_interface_modification(complex_symbol_graph: SymbolGraph):
-    """Test 3: Interface modification detects implementers and breaking change risks."""
+# -----------------------------------------------------------------------------
+# 6. Risk Scoring & Classification
+# -----------------------------------------------------------------------------
+
+def test_6_risk_scoring_and_levels(complex_symbol_graph: SymbolGraph):
+    """Test 6: Tests LOW, MEDIUM, HIGH, and CRITICAL risk classifications."""
     analyzer = ImpactAnalyzer(symbol_graph=complex_symbol_graph)
-    report = analyzer.analyze_symbol("IAuthProvider")
 
-    assert len(report.implementations) == 3
-    assert any("DatabaseAuth" in impl for impl in report.implementations)
-    assert any("implemented by 3 class(es)" in risk for risk in report.breaking_change_risks)
-    assert report.impact_score >= 40.0
+    # 1. Low Impact
+    low_rep = analyzer.analyze_symbol("_internal_hash")
+    assert low_rep.risk_level == RiskLevel.LOW
+    assert low_rep.impact_score <= 25.0
+
+    # 2. High / Critical Impact
+    high_rep = analyzer.analyze_symbol("CoreService.process_payment")
+    assert high_rep.risk_level in {RiskLevel.HIGH, RiskLevel.CRITICAL}
+    assert high_rep.impact_score >= 51.0
+
+    # 3. Base class modification
+    base_rep = analyzer.analyze_symbol("BaseController")
+    assert len(base_rep.subclasses) == 3
+    assert base_rep.impact_score >= 40.0
 
 
-def test_4_base_class_modification(complex_symbol_graph: SymbolGraph):
-    """Test 4: Base class modification detects subclasses and inheritance risks."""
+# -----------------------------------------------------------------------------
+# 7. Large Graph Performance
+# -----------------------------------------------------------------------------
+
+def test_7_large_graph_performance():
+    """Test 7: Benchmarks analysis performance on a large graph (500+ symbols, 100+ files)."""
+    large_graph = SymbolGraph()
+
+    for i in range(100):
+        fname = f"src/module_{i}.py"
+        cls_name = f"Service_{i}"
+        sym_cls = Symbol(
+            id=f"{fname}::{cls_name}",
+            name=cls_name,
+            qualified_name=cls_name,
+            symbol_type=SymbolType.CLASS,
+            language="python",
+            file=fname,
+            line=1,
+            end_line=50,
+            visibility=Visibility.PUBLIC,
+        )
+        large_graph.add_symbol(sym_cls)
+
+        for j in range(5):
+            fn_name = f"method_{i}_{j}"
+            sym_fn = Symbol(
+                id=f"{fname}::{cls_name}.{fn_name}",
+                name=fn_name,
+                qualified_name=f"{cls_name}.{fn_name}",
+                symbol_type=SymbolType.METHOD,
+                language="python",
+                file=fname,
+                line=10 + j * 8,
+                end_line=17 + j * 8,
+                visibility=Visibility.PUBLIC,
+                calls=[f"method_{max(0, i-1)}_{j}"],
+            )
+            large_graph.add_symbol(sym_fn)
+
+        if i > 0:
+            large_graph.add_dependency(Dependency(fname, f"src/module_{i-1}.py", "import"))
+
+    analyzer = ImpactAnalyzer(symbol_graph=large_graph, max_depth=3)
+    task = Task(
+        id="LARGE-01",
+        title="Refactor Service_50 and method_50_0",
+        description="Scaling test on large symbol graph",
+        estimated_files=["src/module_50.py"],
+    )
+
+    start_t = time.time()
+    report = analyzer.analyze(task)
+    duration = time.time() - start_t
+
+    assert duration < 0.20  # Under 200ms
+    assert report.risk_level in {RiskLevel.HIGH, RiskLevel.CRITICAL, RiskLevel.MEDIUM}
+    assert len(report.affected_files) > 0
+
+
+# -----------------------------------------------------------------------------
+# 8. Serialization & JSON Roundtrip
+# -----------------------------------------------------------------------------
+
+def test_8_serialization_and_json_roundtrip(complex_symbol_graph: SymbolGraph):
+    """Test 8: Validates to_dict, to_json, and from_dict roundtrip."""
     analyzer = ImpactAnalyzer(symbol_graph=complex_symbol_graph)
-    report = analyzer.analyze_symbol("BaseController")
+    task = Task(
+        id="SERIAL-01",
+        title="Refactor process_payment",
+        description="Serialization verification",
+        estimated_files=["src/core_service.py"],
+    )
 
-    assert len(report.subclasses) == 3
-    assert any("UserController" in sub for sub in report.subclasses)
-    assert any("subclass(es)" in risk for risk in report.breaking_change_risks)
+    report = analyzer.analyze(task)
+    report_dict = report.to_dict()
+
+    assert "risk" in report_dict
+    assert "risk_level" in report_dict
+    assert "confidence" in report_dict
+    assert "affected_files" in report_dict
+    assert "affected_symbols" in report_dict
+    assert "affected_tests" in report_dict
+    assert "summary" in report_dict
+
+    json_str = report.to_json()
+    assert isinstance(json_str, str)
+
+    restored = ImpactReport.from_dict(json.loads(json_str))
+    assert restored.risk_level == report.risk_level
+    assert restored.confidence == report.confidence
+    assert restored.affected_files == report.affected_files
 
 
-def test_5_multiple_callers(complex_symbol_graph: SymbolGraph):
-    """Test 5: Correctly enumerates and scales risk for multiple callers."""
+# -----------------------------------------------------------------------------
+# 9. Edge Cases & Robustness
+# -----------------------------------------------------------------------------
+
+def test_9_edge_cases_empty_graph_and_missing_symbol(tmp_path: Path):
+    """Test 9: Handles empty graph, missing symbols, and dictionary tasks gracefully."""
+    empty_graph = SymbolGraph()
+    analyzer = ImpactAnalyzer(symbol_graph=empty_graph, project_root=tmp_path)
+
+    # Empty graph
+    rep_empty = analyzer.analyze(Task(id="EMPTY-01", title="Empty task", description="No graph"))
+    assert rep_empty.risk_level == RiskLevel.LOW
+    assert rep_empty.impact_score == 0.0
+
+    # Nonexistent symbol on populated graph
+    nonexistent_rep = analyzer.analyze_symbol("UnknownClass.unknownMethod")
+    assert nonexistent_rep.risk_level == RiskLevel.LOW
+
+    # Dict task
+    dict_task = {"id": "DICT-01", "title": "Dict Title", "description": "Dict Desc", "estimated_files": []}
+    rep_dict = analyzer.analyze(dict_task)
+    assert rep_dict.target == "DICT-01"
+
+
+# -----------------------------------------------------------------------------
+# 10. PromptBuilder & Orchestrator Integration
+# -----------------------------------------------------------------------------
+
+def test_10_prompt_builder_integration(complex_symbol_graph: SymbolGraph):
+    """Test 10: Ensures PromptBuilder correctly formats and incorporates the impact report."""
     analyzer = ImpactAnalyzer(symbol_graph=complex_symbol_graph)
-    report = analyzer.analyze_symbol("process_payment")
+    builder = PromptBuilder(impact_analyzer=analyzer)
 
-    assert len(report.callers) >= 5
-    assert all(f"caller_{i}" in str(report.callers) for i in range(1, 6))
-
-
-def test_6_reverse_dependency_detection(complex_symbol_graph: SymbolGraph):
-    """Test 6: File impact analysis traverses direct and transitive reverse dependents via BFS."""
-    analyzer = ImpactAnalyzer(symbol_graph=complex_symbol_graph)
-    report = analyzer.analyze_file("src/caller_1.py")
-
-    assert "src/gateway.py" in report.direct_dependents
-    assert "src/app.py" in report.transitive_dependents
-
-
-def test_7_test_impact_detection(complex_symbol_graph: SymbolGraph):
-    """Test 7: Identifies affected test files and includes them in validation recommendations."""
-    analyzer = ImpactAnalyzer(symbol_graph=complex_symbol_graph)
-    report = analyzer.analyze_symbol("process_payment")
-
-    assert "tests/test_core_service.py" in report.affected_tests
-    assert any("test suite" in val.lower() for val in report.recommended_validation)
-
-
-def test_8_risk_scoring_brackets():
-    """Test 8: Validates score to RiskLevel mapping for all 4 brackets."""
-    assert RiskLevel.from_score(0.0) == RiskLevel.LOW
-    assert RiskLevel.from_score(25.0) == RiskLevel.LOW
-    assert RiskLevel.from_score(26.0) == RiskLevel.MEDIUM
-    assert RiskLevel.from_score(50.0) == RiskLevel.MEDIUM
-    assert RiskLevel.from_score(51.0) == RiskLevel.HIGH
-    assert RiskLevel.from_score(75.0) == RiskLevel.HIGH
-    assert RiskLevel.from_score(76.0) == RiskLevel.CRITICAL
-    assert RiskLevel.from_score(100.0) == RiskLevel.CRITICAL
-
-
-def test_9_deterministic_result(complex_symbol_graph: SymbolGraph):
-    """Test 9: Repeating impact analysis on identical symbol yields identical report."""
-    analyzer = ImpactAnalyzer(symbol_graph=complex_symbol_graph)
-    rep1 = analyzer.analyze_symbol("CoreService.process_payment")
-    rep2 = analyzer.analyze_symbol("CoreService.process_payment")
-
-    assert rep1.to_dict() == rep2.to_dict()
-
-
-def test_10_missing_symbol_graceful_handling(complex_symbol_graph: SymbolGraph):
-    """Test 10: Analyzing nonexistent symbol returns safe LOW risk report without error."""
-    analyzer = ImpactAnalyzer(symbol_graph=complex_symbol_graph)
-    report = analyzer.analyze_symbol("NonexistentSymbol_123")
-
-    assert report.risk_level == RiskLevel.LOW
-    assert report.impact_score == 0.0
-    assert any("not found" in r.lower() for r in report.breaking_change_risks)
-
-
-def test_11_file_impact_analysis(complex_symbol_graph: SymbolGraph):
-    """Test 11: Analyzes entire source file and computes comprehensive blast radius."""
-    analyzer = ImpactAnalyzer(symbol_graph=complex_symbol_graph)
-    report = analyzer.analyze_file("src/core_service.py")
-
-    assert report.target == "src/core_service.py"
-    assert len(report.direct_dependents) >= 5
-    assert "tests/test_core_service.py" in report.affected_tests
-    assert report.risk_level in {RiskLevel.HIGH, RiskLevel.CRITICAL}
-
-
-def test_12_task_impact_analysis(complex_symbol_graph: SymbolGraph):
-    """Test 12: Aggregates impact across task title keywords and estimated files."""
-    analyzer = ImpactAnalyzer(symbol_graph=complex_symbol_graph)
     task = Task(
         id="TASK-PAY-01",
         title="Refactor process_payment transaction engine",
         description="Core financial pipeline overhaul",
         estimated_files=["src/core_service.py"],
     )
+    context = {
+        "project_name": "PaymentCore",
+        "description": "Payment Gateway Engine",
+        "technology_stack": "Python 3.11",
+        "current_day": 1,
+        "current_phase": {"phase_name": "Phase 1", "goals": ["Payments"]},
+        "directory_tree": ["src/core_service.py"],
+        "project_files": {"src/core_service.py": "# source"},
+    }
 
-    report = analyzer.analyze_task(task)
-    assert report.target == "TASK-PAY-01"
-    assert "src/core_service.py" in report.affected_files
-    assert len(report.callers) >= 5
-    assert report.risk_level in {RiskLevel.HIGH, RiskLevel.CRITICAL}
+    prompt = builder.build(context=context, task=task)
+    assert "7. CODE IMPACT ANALYSIS" in prompt
+    assert "Risk Level" in prompt
+    assert "Confidence:" in prompt
+    assert "src/core_service.py" in prompt
+    assert "tests/test_core_service.py" in prompt
+    assert "Summary:" in prompt

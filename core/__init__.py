@@ -1,10 +1,21 @@
-"""
-Core module for AutoDev.
-"""
-
+from core.change_planner import (
+    BreakingChange,
+    ChangeClassification,
+    ChangePlan,
+    ChangePlanner,
+    FileChange,
+    MigrationStep,
+    NecessityRank,
+    RefactoringStep,
+    RefactoringType,
+    SymbolChange,
+    ValidationRule,
+)
 from core.code_context_retriever import (
     CodeContextResult,
     CodeContextRetriever,
+    CodeSnippet,
+    ContextBundle,
     RelevantFile,
     RelevantSymbol,
 )
@@ -12,6 +23,7 @@ from core.code_indexer import CodeIndexer
 from core.context_injector import ContextInjector, ScoredMemory
 from core.impact_analyzer import (
     ImpactAnalyzer,
+    ImpactNode,
     ImpactReport,
     RiskLevel,
 )
@@ -24,6 +36,32 @@ from core.memory_manager import (
     MemoryValidationError,
 )
 from core.prompt_builder import PromptBuilder
+from core.refactoring_planner import (
+    ActionType,
+    ModificationAction,
+    RefactoringPlan,
+    RefactoringPlanner,
+)
+from core.repository_analyzer import (
+    ArchitectureLayer,
+    ArchitectureMetrics,
+    CircularDependency,
+    Hotspot,
+    ModuleSummary,
+    RepositoryAnalysis,
+    RepositoryAnalyzer,
+    RepositoryOverview,
+)
+from core.requirement_planner import (
+    PlanParsingError,
+    PlanValidationError,
+    ProjectPhase,
+    ProjectPlan,
+    ProjectSpecification,
+    ProjectTask,
+    RequirementPlanner,
+    RequirementPlannerError,
+)
 from core.symbol_graph import (
     Dependency,
     IndexStatistics,
@@ -52,11 +90,49 @@ __all__ = [
     "MemoryStatistics",
     "MemoryValidationError",
     "CodeContextRetriever",
+    "CodeSnippet",
+    "ContextBundle",
     "CodeContextResult",
     "RelevantSymbol",
     "RelevantFile",
     "ImpactAnalyzer",
+    "ImpactNode",
     "ImpactReport",
     "RiskLevel",
     "PromptBuilder",
+    "RequirementPlanner",
+    "ProjectSpecification",
+    "ProjectPhase",
+    "ProjectTask",
+    "ProjectPlan",
+    "RequirementPlannerError",
+    "PlanParsingError",
+    "PlanValidationError",
+    "RefactoringPlanner",
+    "RefactoringPlan",
+    "ModificationAction",
+    "ActionType",
+    "RepositoryAnalyzer",
+    "RepositoryOverview",
+    "RepositoryAnalysis",
+    "ArchitectureLayer",
+    "ArchitectureMetrics",
+    "ModuleSummary",
+    "Hotspot",
+    "CircularDependency",
+    "ChangePlanner",
+    "ChangePlan",
+    "FileChange",
+    "SymbolChange",
+    "RefactoringStep",
+    "BreakingChange",
+    "MigrationStep",
+    "ValidationRule",
+    "ChangeClassification",
+    "RefactoringType",
+    "NecessityRank",
 ]
+
+
+
+

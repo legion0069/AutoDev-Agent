@@ -43,8 +43,16 @@ from agents.git_agent import CommitResult, GitAgent
 from agents.reviewer_agent import ReviewerAgent, ReviewResult
 from agents.task_planner_agent import Task, TaskPlannerAgent
 from agents.tester_agent import TesterAgent, TestResult
+from core.change_planner import ChangePlan, ChangePlanner
+from core.code_context_retriever import CodeContextRetriever
 from core.context_builder import ContextBuilder
+from core.impact_analyzer import ImpactAnalyzer
 from core.llm import BaseLLM
+from core.refactoring_planner import RefactoringPlan, RefactoringPlanner
+from core.repository_analyzer import RepositoryAnalyzer, RepositoryOverview
+from core.requirement_planner import RequirementPlanner
+
+
 from core.retry_engine import RetryEngine, RetryResult
 from core.state_manager import ExecutionRecord, ProjectState, StateManager
 
@@ -196,6 +204,13 @@ class Orchestrator:
         reviewer_agent: Optional[ReviewerAgent] = None,
         retry_engine: Optional[RetryEngine] = None,
         git_agent: Optional[GitAgent] = None,
+        impact_analyzer: Optional[ImpactAnalyzer] = None,
+        refactoring_planner: Optional[RefactoringPlanner] = None,
+        repository_analyzer: Optional[RepositoryAnalyzer] = None,
+        change_planner: Optional[ChangePlanner] = None,
+        code_context_retriever: Optional[CodeContextRetriever] = None,
+        requirement_planner: Optional[RequirementPlanner] = None,
+        requirement: Optional[str] = None,
         llm: Optional[BaseLLM] = None,
     ) -> None:
         """
@@ -207,6 +222,8 @@ class Orchestrator:
         self.tasks_path = Path(tasks_path).resolve()
         self.logger = setup_logger(log_dir=log_dir)
         self.llm = llm
+        self.requirement = requirement
+        self.requirement_planner = requirement_planner
 
         # Dependency Injection / Subsystem Defaults
         self.state_manager = state_manager or StateManager(
@@ -241,16 +258,37 @@ class Orchestrator:
             project_root=self.project_root,
             auto_init=True,
         )
+        self.impact_analyzer = impact_analyzer
+        self.refactoring_planner = refactoring_planner
+        self.repository_analyzer = repository_analyzer
+        self.change_planner = change_planner
+        self.code_context_retriever = code_context_retriever
+
+
 
     # -------------------------------------------------------------------------
     # Helper Steps
     # -------------------------------------------------------------------------
 
     def _verify_project_plan(self) -> Dict[str, Any]:
-        """Verifies that project_plan.json exists and contains phases."""
+        """
+        Verifies that project_plan.json exists and contains phases.
+        If missing and requirement or requirement_planner is provided, generates it automatically.
+        """
         self.logger.info("Verifying project plan at '%s'...", self.plan_path)
         if not self.plan_path.is_file():
-            raise FileNotFoundError(f"Project plan missing at '{self.plan_path}'.")
+            if self.requirement or self.requirement_planner:
+                req_text = self.requirement or "Autonomous Software Engineering Implementation"
+                planner = self.requirement_planner or RequirementPlanner(llm=self.llm)
+                self.logger.info("Project plan missing at '%s'. Generating plan via RequirementPlanner...", self.plan_path)
+                try:
+                    plan_obj = planner.generate_plan(req_text)
+                    planner.save_plan(plan_obj, self.plan_path)
+                    self.logger.info("Plan automatically generated and saved to '%s'.", self.plan_path)
+                except Exception as exc:
+                    raise RuntimeError(f"RequirementPlanner failed to generate plan: {exc}") from exc
+            else:
+                raise FileNotFoundError(f"Project plan missing at '{self.plan_path}'.")
 
         try:
             with open(self.plan_path, "r", encoding="utf-8") as f:
@@ -332,8 +370,37 @@ class Orchestrator:
             self.logger.info("Building project context with ContextBuilder...")
             context = self.context_builder.build(project_root=self.project_root)
 
+            # Repository Intelligence Analysis (v1.7)
+            if hasattr(self, "repository_analyzer") and self.repository_analyzer:
+                try:
+                    self.logger.info("Executing Repository Intelligence Analysis...")
+                    repo_analysis = self.repository_analyzer.analyze(
+                        project_root=self.project_root,
+                        symbol_graph=context.get("symbol_graph"),
+                        project_files=context.get("project_files"),
+                    )
+                    context["repository_analysis"] = repo_analysis
+                    try:
+                        self.repository_analyzer.save_report(repo_analysis)
+                    except Exception:
+                        pass
+                except Exception as err:
+                    self.logger.warning("RepositoryAnalyzer execution warning: %s", err)
+            elif "symbol_graph" in context and context["symbol_graph"] is not None:
+                try:
+                    analyzer = RepositoryAnalyzer(project_root=self.project_root, symbol_graph=context["symbol_graph"])
+                    repo_analysis = analyzer.analyze(
+                        project_root=self.project_root,
+                        symbol_graph=context["symbol_graph"],
+                        project_files=context.get("project_files"),
+                    )
+                    context["repository_analysis"] = repo_analysis
+                except Exception as err:
+                    self.logger.warning("RepositoryAnalyzer fallback warning: %s", err)
+
             # 4. Generate task list
             self.logger.info("Generating today's atomic tasks with TaskPlannerAgent...")
+
             all_today_tasks = self.task_planner.execute(context)
 
             # 5. Filter completed tasks
@@ -399,7 +466,60 @@ class Orchestrator:
                 task_start = time.time()
 
                 try:
-                    # • CoderAgent.execute()
+                    # 1. Impact Analysis
+                    impact_report = None
+                    if hasattr(self, "impact_analyzer") and self.impact_analyzer:
+                        try:
+                            self.logger.info("Performing Dependency Impact Analysis for Task [%s]...", task.id)
+                            impact_report = self.impact_analyzer.analyze(task=task, context=context)
+                            context["impact_report"] = impact_report
+                        except Exception as err:
+                            self.logger.warning("ImpactAnalyzer execution non-blocking warning: %s", err)
+
+                    # 2. Refactoring Planning (v1.7)
+                    if hasattr(self, "refactoring_planner") and self.refactoring_planner:
+                        try:
+                            self.logger.info("Generating Safe Refactoring Plan for Task [%s]...", task.id)
+                            refactoring_plan = self.refactoring_planner.plan(task=task, context=context)
+                            context["refactoring_plan"] = refactoring_plan
+                        except Exception as err:
+                            self.logger.warning("RefactoringPlanner execution non-blocking warning: %s", err)
+
+                    # 2.5 Semantic Change Planning (v1.8)
+                    if hasattr(self, "change_planner") and self.change_planner:
+                        try:
+                            self.logger.info("Computing Semantic Change Plan for Task [%s]...", task.id)
+                            change_plan = self.change_planner.plan(
+                                task=task,
+                                context=context,
+                                symbol_graph=context.get("symbol_graph"),
+                                repository_overview=context.get("repository_analysis"),
+                                impact_report=context.get("impact_report"),
+                            )
+                            context["change_plan"] = change_plan
+                            try:
+                                self.change_planner.export(change_plan)
+                            except Exception:
+                                pass
+                        except Exception as err:
+                            self.logger.warning("ChangePlanner execution non-blocking warning: %s", err)
+
+
+                    # 3. Code Context Retrieval
+                    if hasattr(self, "code_context_retriever") and self.code_context_retriever:
+                        try:
+                            self.logger.info("Retrieving Relevant Code Context for Task [%s]...", task.id)
+                            context_bundle = self.code_context_retriever.retrieve(
+                                task=task,
+                                impact_report=impact_report,
+                                context=context,
+                            )
+                            context["context_bundle"] = context_bundle
+                            context["code_context_result"] = context_bundle
+                        except Exception as err:
+                            self.logger.warning("CodeContextRetriever execution non-blocking warning: %s", err)
+
+                    # 3. CoderAgent.execute()
                     self.logger.info("Executing CoderAgent for Task [%s]...", task.id)
                     generated_result = self.coder_agent.execute(context=context, task=task)
 

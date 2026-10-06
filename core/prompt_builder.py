@@ -21,15 +21,46 @@ if __name__ == "__main__" and __package__ is None:
 if TYPE_CHECKING:
     from agents.task_planner_agent import Task
 
+from core.change_planner import (
+    BreakingChange,
+    ChangeClassification,
+    ChangePlan,
+    ChangePlanner,
+    FileChange,
+    MigrationStep,
+    NecessityRank,
+    RefactoringStep,
+    RefactoringType,
+    SymbolChange,
+    ValidationRule,
+)
 from core.code_context_retriever import (
     CodeContextResult,
     CodeContextRetriever,
+    CodeSnippet,
+    ContextBundle,
     RelevantFile,
     RelevantSymbol,
 )
 from core.context_injector import ContextInjector
 from core.impact_analyzer import ImpactAnalyzer, ImpactReport, RiskLevel
 from core.memory_manager import MemoryManager
+from core.refactoring_planner import (
+    ActionType,
+    ModificationAction,
+    RefactoringPlan,
+    RefactoringPlanner,
+)
+from core.repository_analyzer import (
+    ArchitectureLayer,
+    ArchitectureMetrics,
+    CircularDependency,
+    Hotspot,
+    ModuleSummary,
+    RepositoryAnalysis,
+    RepositoryAnalyzer,
+    RepositoryOverview,
+)
 from core.symbol_graph import SymbolGraph
 
 
@@ -37,7 +68,9 @@ class PromptBuilder:
     """
     Constructs comprehensive, standardized engineering prompts for LLM code generation.
     Integrates ContextInjector (historical engineering memory), CodeContextRetriever
-    (minimal relevant code slices), and ImpactAnalyzer (blast radius & breaking change risks).
+    (minimal relevant code slices), ImpactAnalyzer (blast radius & breaking change risks),
+    RefactoringPlanner (safe modification execution plan), RepositoryAnalyzer
+    (repository architecture intelligence), and ChangePlanner (semantic change blueprint).
     """
 
     def __init__(
@@ -47,6 +80,9 @@ class PromptBuilder:
         memory_manager: Optional[MemoryManager] = None,
         code_context_retriever: Optional[CodeContextRetriever] = None,
         impact_analyzer: Optional[ImpactAnalyzer] = None,
+        refactoring_planner: Optional[RefactoringPlanner] = None,
+        repository_analyzer: Optional[RepositoryAnalyzer] = None,
+        change_planner: Optional[ChangePlanner] = None,
         symbol_graph: Optional[SymbolGraph] = None,
     ) -> None:
         """
@@ -58,7 +94,10 @@ class PromptBuilder:
             memory_manager: Optional MemoryManager instance used to create a ContextInjector.
             code_context_retriever: Optional CodeContextRetriever instance.
             impact_analyzer: Optional ImpactAnalyzer instance.
-            symbol_graph: Optional SymbolGraph instance used to construct retriever & analyzer.
+            refactoring_planner: Optional RefactoringPlanner instance.
+            repository_analyzer: Optional RepositoryAnalyzer instance.
+            change_planner: Optional ChangePlanner instance.
+            symbol_graph: Optional SymbolGraph instance used to construct subsystems.
         """
         self.max_file_chars = max_file_chars
 
@@ -85,6 +124,32 @@ class PromptBuilder:
             self.impact_analyzer = ImpactAnalyzer(symbol_graph=symbol_graph)
         else:
             self.impact_analyzer = None
+
+        # Refactoring Planner
+        if refactoring_planner is not None:
+            self.refactoring_planner = refactoring_planner
+        elif symbol_graph is not None:
+            self.refactoring_planner = RefactoringPlanner(symbol_graph=symbol_graph)
+        else:
+            self.refactoring_planner = None
+
+        # Repository Analyzer (v1.7)
+        if repository_analyzer is not None:
+            self.repository_analyzer = repository_analyzer
+        elif symbol_graph is not None:
+            self.repository_analyzer = RepositoryAnalyzer(symbol_graph=symbol_graph)
+        else:
+            self.repository_analyzer = None
+
+        # Change Planner (v1.8)
+        if change_planner is not None:
+            self.change_planner = change_planner
+        elif symbol_graph is not None:
+            self.change_planner = ChangePlanner(symbol_graph=symbol_graph)
+        else:
+            self.change_planner = None
+
+
 
     # -------------------------------------------------------------------------
     # Section Builders
@@ -158,6 +223,106 @@ class PromptBuilder:
             f"Phase Deliverables:\n{deliv_text}"
         )
 
+    def build_architecture_section(
+        self,
+        context: Dict[str, Any],
+        task: Optional[Union[Task, Dict[str, Any]]] = None,
+    ) -> Optional[str]:
+        """
+        Constructs the PROJECT ARCHITECTURE section detailing detected patterns,
+        layers, module responsibilities, entry points, hotspots, and circular dependencies.
+        """
+        overview: Optional[RepositoryOverview] = None
+
+        if "repository_analysis" in context and isinstance(context["repository_analysis"], RepositoryOverview):
+            overview = context["repository_analysis"]
+        elif "repository_overview" in context and isinstance(context["repository_overview"], RepositoryOverview):
+            overview = context["repository_overview"]
+        elif "repository_analyzer" in context and hasattr(context["repository_analyzer"], "analyze"):
+            overview = context["repository_analyzer"].analyze(
+                symbol_graph=context.get("symbol_graph"),
+                project_files=context.get("project_files"),
+            )
+        elif self.repository_analyzer is not None:
+            overview = self.repository_analyzer.analyze(
+                symbol_graph=context.get("symbol_graph"),
+                project_files=context.get("project_files"),
+            )
+        elif "symbol_graph" in context and context["symbol_graph"] is not None:
+            analyzer = RepositoryAnalyzer(symbol_graph=context["symbol_graph"])
+            overview = analyzer.analyze(
+                symbol_graph=context["symbol_graph"],
+                project_files=context.get("project_files"),
+            )
+
+        if not overview or overview.total_modules == 0:
+            return None
+
+        lines: List[str] = [
+            "================================================================================",
+            "PROJECT ARCHITECTURE",
+            "================================================================================",
+        ]
+
+        if overview.detected_architectures:
+            top_arch = overview.detected_architectures[0]
+            lines.append(f"Primary Architecture : {top_arch.pattern_name} (Confidence: {top_arch.confidence:.2f})")
+            if len(overview.detected_architectures) > 1:
+                other_archs = [f"{a.pattern_name} ({a.confidence:.2f})" for a in overview.detected_architectures[1:3]]
+                lines.append(f"Associated Patterns  : {', '.join(other_archs)}")
+
+        if overview.architecture_layers:
+            lines.append("\nDetected Layers:")
+            for layer in overview.architecture_layers:
+                if layer.modules:
+                    mod_sample = ", ".join(layer.modules[:4])
+                    if len(layer.modules) > 4:
+                        mod_sample += f" (+{len(layer.modules) - 4} more)"
+                    lines.append(f"- {layer.name}: {mod_sample}")
+
+        if overview.module_summaries:
+            lines.append("\nKey Module Responsibilities:")
+            target_files = []
+            if task:
+                if hasattr(task, "estimated_files"):
+                    target_files = getattr(task, "estimated_files", []) or []
+                elif isinstance(task, dict):
+                    target_files = task.get("estimated_files", []) or []
+
+            shown_mods = 0
+            for tf in target_files:
+                if tf in overview.module_summaries and shown_mods < 4:
+                    ms = overview.module_summaries[tf]
+                    lines.append(f"- `{tf}`: {ms.purpose or ', '.join(ms.responsibilities[:1])}")
+                    shown_mods += 1
+
+            for mod_path, ms in list(overview.module_summaries.items()):
+                if mod_path not in target_files and shown_mods < 4:
+                    lines.append(f"- `{mod_path}`: {ms.purpose or ', '.join(ms.responsibilities[:1])}")
+                    shown_mods += 1
+
+        if overview.entry_points:
+            lines.append("\nImportant Entry Points:")
+            for ep in overview.entry_points[:4]:
+                lines.append(f"- {ep}")
+
+        if overview.hotspots:
+            lines.append("\nRepository Hotspots:")
+            for h in overview.hotspots[:3]:
+                lines.append(f"- [{h.category.upper()}] {h.target}: {h.description}")
+
+        if overview.circular_dependencies:
+            lines.append("\nCircular Dependencies:")
+            for c in overview.circular_dependencies[:3]:
+                lines.append(f"- [WARNING - {c.severity}] {' -> '.join(c.cycle)}")
+
+        if overview.public_apis:
+            lines.append("\nPublic APIs:")
+            for api in overview.public_apis[:4]:
+                lines.append(f"- {api}")
+
+        return "\n".join(lines)
+
     def build_memory_section(
         self,
         context: Dict[str, Any],
@@ -180,6 +345,7 @@ class PromptBuilder:
         if memory_block and memory_block.strip():
             return memory_block
         return None
+
 
     def build_task_section(self, task: Union[Task, Dict[str, Any]]) -> str:
         """
@@ -239,13 +405,15 @@ class PromptBuilder:
 
         if "impact_report" in context and isinstance(context["impact_report"], ImpactReport):
             report = context["impact_report"]
+        elif "impact_analyzer" in context and hasattr(context["impact_analyzer"], "analyze"):
+            report = context["impact_analyzer"].analyze(task, context)
         elif "impact_analyzer" in context and hasattr(context["impact_analyzer"], "analyze_task"):
             report = context["impact_analyzer"].analyze_task(task)
         elif self.impact_analyzer is not None:
-            report = self.impact_analyzer.analyze_task(task)
+            report = self.impact_analyzer.analyze(task, context)
         elif "symbol_graph" in context and context["symbol_graph"] is not None:
             analyzer = ImpactAnalyzer(symbol_graph=context["symbol_graph"])
-            report = analyzer.analyze_task(task)
+            report = analyzer.analyze(task, context)
 
         if not report:
             return None
@@ -256,6 +424,7 @@ class PromptBuilder:
             and not report.affected_files
             and not report.affected_symbols
             and not report.breaking_change_risks
+            and not report.summary
         ):
             return None
 
@@ -263,17 +432,21 @@ class PromptBuilder:
             "================================================================================",
             "7. CODE IMPACT ANALYSIS",
             "================================================================================",
-            f"Target                  : {report.target}",
-            f"Risk Level              : {report.risk_level} (Impact Score: {report.impact_score:.1f}/100)",
+            f"Target                  : {report.target or 'Current Task'}",
+            f"Risk Level              : {report.risk_level} (Impact Score: {report.impact_score:.1f}/100, Confidence: {report.confidence:.2f})",
+            f"Estimated Scope         : {report.estimated_change_scope}",
             f"Affected Files          : {', '.join(report.affected_files) if report.affected_files else 'None'}",
             f"Affected Symbols        : {', '.join(report.affected_symbols) if report.affected_symbols else 'None'}",
-            f"Callers                 : {', '.join(report.callers) if report.callers else 'None'}",
-            f"Direct Dependents       : {', '.join(report.direct_dependents) if report.direct_dependents else 'None'}",
-            f"Transitive Dependents   : {', '.join(report.transitive_dependents) if report.transitive_dependents else 'None'}",
-            f"Subclasses              : {', '.join(report.subclasses) if report.subclasses else 'None'}",
-            f"Implementations         : {', '.join(report.implementations) if report.implementations else 'None'}",
             f"Affected Tests          : {', '.join(report.affected_tests) if report.affected_tests else 'None'}",
+            f"Callers                 : {', '.join(report.callers) if report.callers else 'None'}",
+            f"Callees                 : {', '.join(report.callees) if report.callees else 'None'}",
+            f"Dependencies            : {', '.join(report.dependencies) if report.dependencies else 'None'}",
+            f"Dependents              : {', '.join(report.dependents) if report.dependents else 'None'}",
+            f"Inheritance Chain       : {', '.join(report.inheritance_chain) if report.inheritance_chain else 'None'}",
         ]
+
+        if report.summary:
+            lines.append(f"\nSummary:\n{report.summary}")
 
         if report.breaking_change_risks:
             lines.append("\nPotential Breaking Changes:")
@@ -287,6 +460,186 @@ class PromptBuilder:
 
         return "\n".join(lines)
 
+    def build_refactoring_section(
+        self,
+        context: Dict[str, Any],
+        task: Union[Task, Dict[str, Any]],
+    ) -> Optional[str]:
+        """
+        Constructs the SAFE REFACTORING PLAN section detailing exact files to modify/create/delete
+        and granular modification actions with breaking change analysis.
+        """
+        plan: Optional[RefactoringPlan] = None
+
+        if "refactoring_plan" in context and isinstance(context["refactoring_plan"], RefactoringPlan):
+            plan = context["refactoring_plan"]
+        elif "refactoring_planner" in context and hasattr(context["refactoring_planner"], "plan"):
+            plan = context["refactoring_planner"].plan(task, context)
+        elif self.refactoring_planner is not None:
+            plan = self.refactoring_planner.plan(task, context)
+        elif "symbol_graph" in context and context["symbol_graph"] is not None:
+            planner = RefactoringPlanner(symbol_graph=context["symbol_graph"])
+            plan = planner.plan(task, context)
+
+        if not plan or not plan.actions:
+            return None
+
+        lines: List[str] = [
+            "================================================================================",
+            "SAFE REFACTORING PLAN",
+            "================================================================================",
+        ]
+
+        if plan.summary:
+            lines.append(f"Summary:\n{plan.summary}\n")
+
+        if plan.files_to_modify:
+            lines.append("Files To Modify\n---------------")
+            for f in plan.files_to_modify:
+                lines.append(f)
+            lines.append("")
+
+        if plan.files_to_create:
+            lines.append("Files To Create\n---------------")
+            for f in plan.files_to_create:
+                lines.append(f)
+            lines.append("")
+
+        if plan.files_to_delete:
+            lines.append("Files To Delete\n---------------")
+            for f in plan.files_to_delete:
+                lines.append(f)
+            lines.append("")
+
+        if plan.actions:
+            lines.append("Actions\n--------")
+            for act in plan.actions:
+                lines.append(str(act.action_type))
+                sym_str = str(act.target_symbol)
+                sym_display = f"{sym_str}()" if act.action_type in {"MODIFY_FUNCTION", "MODIFY_METHOD", "ADD_FUNCTION", "ADD_METHOD", "DELETE_FUNCTION"} and not sym_str.endswith("()") else sym_str
+                lines.append(sym_display)
+                lines.append("")
+                lines.append(f"Reason:\n{act.reason}")
+                lines.append("")
+                lines.append(f"Priority:\n{act.priority}")
+                lines.append("")
+                lines.append(f"Estimated Change:\n{act.estimated_lines_changed} LOC")
+                lines.append("")
+                breaking_text = "Yes" if act.breaking_change else "No"
+                lines.append(f"Breaking:\n{breaking_text}")
+                if act.notes:
+                    lines.append(f"\nNotes:\n{act.notes}")
+                lines.append("--------------------------------------------------------------------------------")
+
+        if plan.breaking_changes:
+            lines.append("\nBreaking Changes & Safety Invariants:")
+            for bc in plan.breaking_changes:
+                lines.append(f"  ! {bc}")
+            if plan.rollback_required:
+                lines.append("  * Rollback Preparedness: REQUIRED")
+            if plan.migration_required:
+                lines.append("  * Database Migration: REQUIRED")
+
+        return "\n".join(lines)
+
+    def build_change_plan_section(
+        self,
+        context: Dict[str, Any],
+        task: Union[Task, Dict[str, Any]],
+    ) -> Optional[str]:
+        """
+        Constructs the CHANGE PLAN section detailing files to modify, create, avoid,
+        refactoring steps, breaking changes, migration steps, and execution order.
+        """
+        plan: Optional[ChangePlan] = None
+
+        if "change_plan" in context and isinstance(context["change_plan"], ChangePlan):
+            plan = context["change_plan"]
+        elif "change_planner" in context and hasattr(context["change_planner"], "plan"):
+            plan = context["change_planner"].plan(
+                task=task,
+                context=context,
+                symbol_graph=context.get("symbol_graph"),
+                repository_overview=context.get("repository_analysis"),
+                impact_report=context.get("impact_report"),
+            )
+        elif self.change_planner is not None:
+            plan = self.change_planner.plan(
+                task=task,
+                context=context,
+                symbol_graph=context.get("symbol_graph"),
+                repository_overview=context.get("repository_analysis"),
+                impact_report=context.get("impact_report"),
+            )
+        elif "symbol_graph" in context and context["symbol_graph"] is not None:
+            planner = ChangePlanner(symbol_graph=context["symbol_graph"])
+            plan = planner.plan(
+                task=task,
+                context=context,
+                symbol_graph=context["symbol_graph"],
+                repository_overview=context.get("repository_analysis"),
+                impact_report=context.get("impact_report"),
+            )
+
+        if not plan:
+            return None
+
+        lines: List[str] = [
+            "================================================================================",
+            "CHANGE PLAN",
+            "================================================================================",
+            f"Classification : {plan.change_classification} (Risk: {plan.risk_level} | Estimated LOC: {plan.estimated_total_lines})",
+        ]
+
+        if plan.summary:
+            lines.append(f"Summary        : {plan.summary}\n")
+
+        if plan.files_to_modify:
+            lines.append("Files to Modify:")
+            for f in plan.files_to_modify:
+                fc = next((x for x in plan.file_changes if x.file_path == f), None)
+                reason_str = f" - {fc.reason}" if fc else ""
+                lines.append(f"- {f}{reason_str}")
+
+        if plan.files_to_create:
+            lines.append("\nFiles to Create:")
+            for f in plan.files_to_create:
+                fc = next((x for x in plan.file_changes if x.file_path == f), None)
+                reason_str = f" - {fc.reason}" if fc else ""
+                lines.append(f"- {f}{reason_str}")
+
+        if plan.files_to_avoid:
+            avoid_sample = ", ".join(plan.files_to_avoid[:5])
+            if len(plan.files_to_avoid) > 5:
+                avoid_sample += f" (+{len(plan.files_to_avoid) - 5} more)"
+            lines.append(f"\nFiles to Avoid (Protected from unnecessary edits):\n- {avoid_sample}")
+
+        if plan.refactoring_steps:
+            lines.append("\nRefactoring Strategy:")
+            for r in plan.refactoring_steps:
+                lines.append(f"- [{r.refactoring_type}] {r.target} in `{r.target_file}`: {r.description} (Rationale: {r.rationale})")
+
+        if plan.breaking_changes:
+            lines.append("\nBreaking Changes & Mitigations:")
+            for b in plan.breaking_changes:
+                lines.append(f"- [{b.change_category}] {b.target}: {b.description} (Impact: {b.impact_level})")
+                lines.append(f"  Mitigation: {b.mitigation_strategy}")
+
+        if plan.migration_steps:
+            lines.append("\nMigration Steps:")
+            for m in plan.migration_steps:
+                lines.append(f"- [{m.migration_type}] `{m.target_file}`: {m.description}")
+                lines.append(f"  Action: {m.sql_or_code_action}")
+                lines.append(f"  Rollback: {m.rollback_instruction}")
+
+        if plan.execution_order:
+            lines.append("\nExecution Order:")
+            for idx, step_file in enumerate(plan.execution_order, start=1):
+                lines.append(f"{idx}. `{step_file}`")
+
+        return "\n".join(lines)
+
+
     def build_code_context_section(
         self,
         context: Dict[str, Any],
@@ -297,19 +650,42 @@ class PromptBuilder:
         Constructs the RELEVANT CODE CONTEXT section containing focused symbols and file slices.
         Omitted if no relevant code is retrieved.
         """
-        result: Optional[CodeContextResult] = None
+        result: Optional[Any] = None
 
-        if "code_context_result" in context and isinstance(context["code_context_result"], CodeContextResult):
+        if "context_bundle" in context:
+            result = context["context_bundle"]
+        elif "code_context_result" in context:
             result = context["code_context_result"]
         elif "code_context_retriever" in context and hasattr(context["code_context_retriever"], "retrieve"):
-            result = context["code_context_retriever"].retrieve(context, task, max_tokens=max_tokens)
+            result = context["code_context_retriever"].retrieve(
+                task=task,
+                impact_report=context.get("impact_report"),
+                context=context,
+                max_tokens=max_tokens,
+            )
         elif self.code_context_retriever is not None:
-            result = self.code_context_retriever.retrieve(context, task, max_tokens=max_tokens)
+            result = self.code_context_retriever.retrieve(
+                task=task,
+                impact_report=context.get("impact_report"),
+                context=context,
+                max_tokens=max_tokens,
+            )
         elif "symbol_graph" in context and context["symbol_graph"] is not None:
-            retriever = CodeContextRetriever(symbol_graph=context["symbol_graph"])
-            result = retriever.retrieve(context, task, max_tokens=max_tokens)
+            retriever = CodeContextRetriever(graph=context["symbol_graph"])
+            result = retriever.retrieve(
+                task=task,
+                impact_report=context.get("impact_report"),
+                context=context,
+                max_tokens=max_tokens,
+            )
 
-        if not result or (not result.relevant_files and not result.relevant_symbols):
+        if not result:
+            return None
+
+        snippets = getattr(result, "snippets", [])
+        relevant_files = getattr(result, "relevant_files", [])
+
+        if not snippets and not relevant_files and not getattr(result, "relevant_symbols", []):
             return None
 
         lines: List[str] = [
@@ -317,21 +693,30 @@ class PromptBuilder:
             "8. RELEVANT CODE CONTEXT",
             "================================================================================",
         ]
-        if result.summary:
+        if hasattr(result, "summary") and result.summary:
             lines.append(f"Summary: {result.summary}\n")
 
-        for file_item in result.relevant_files:
-            syms_for_file = [s for s in result.relevant_symbols if s.file == file_item.path]
-            lines.append(f"FILE: {file_item.path}")
-            if syms_for_file:
-                sym_names = ", ".join(s.qualified_name for s in syms_for_file)
-                lines.append(f"SYMBOL: {sym_names}")
-                if len(syms_for_file) == 1 and syms_for_file[0].line > 0:
-                    lines.append(f"LINES: {syms_for_file[0].line}-{syms_for_file[0].end_line}")
-            lines.append(f"RELATIONSHIP: {file_item.relationship}")
-            lines.append("")
-            lines.append(file_item.content)
-            lines.append("--------------------------------------------------------------------------------")
+        if snippets:
+            for s in snippets:
+                lines.append(f"File   : {s.file}")
+                lines.append(f"Lines  : {s.start_line}-{s.end_line}")
+                lines.append(f"Reason : {s.reason}")
+                lines.append(f"Symbol : {s.symbol}")
+                lines.append(f"```{s.language}")
+                lines.append(s.content.rstrip())
+                lines.append("```")
+                lines.append("--------------------------------------------------------------------------------")
+        elif relevant_files:
+            for file_item in relevant_files:
+                f_path = getattr(file_item, "path", getattr(file_item, "file", ""))
+                f_syms = getattr(file_item, "symbols", [])
+                lines.append(f"FILE: {f_path}")
+                if f_syms:
+                    lines.append(f"SYMBOL: {', '.join(f_syms) if isinstance(f_syms, list) else f_syms}")
+                lines.append(f"RELATIONSHIP: {getattr(file_item, 'relationship', getattr(file_item, 'reason', 'direct_target'))}")
+                lines.append("")
+                lines.append(getattr(file_item, "content", ""))
+                lines.append("--------------------------------------------------------------------------------")
 
         return "\n".join(lines)
 
@@ -542,10 +927,16 @@ class PromptBuilder:
             self.build_phase_section(context),
         ]
 
+        # Project Architecture Intelligence (v1.7)
+        arch_sec = self.build_architecture_section(context, task)
+        if arch_sec:
+            sections.append(arch_sec)
+
         # 5. Injected Relevant Project Memory
         memory_sec = self.build_memory_section(context, task)
         if memory_sec:
             sections.append(memory_sec)
+
 
         # 6. Current Task
         sections.append(self.build_task_section(task))
@@ -554,6 +945,17 @@ class PromptBuilder:
         impact_sec = self.build_impact_section(context, task)
         if impact_sec:
             sections.append(impact_sec)
+
+        # Safe Refactoring Plan (v1.7)
+        refactoring_sec = self.build_refactoring_section(context, task)
+        if refactoring_sec:
+            sections.append(refactoring_sec)
+
+        # Semantic Change Plan (v1.8)
+        change_plan_sec = self.build_change_plan_section(context, task)
+        if change_plan_sec:
+            sections.append(change_plan_sec)
+
 
         # 8. Relevant Code Context
         code_context_sec = self.build_code_context_section(context, task)

@@ -1,0 +1,376 @@
+{
+  "project_name": "autodev_repo_test_xd8qczwt",
+  "project_root": "C:\\Users\\veruk\\AppData\\Local\\Temp\\autodev_repo_test_xd8qczwt",
+  "timestamp": "2026-10-06T18:11:56.341888+00:00",
+  "total_modules": 7,
+  "total_classes": 3,
+  "total_interfaces": 0,
+  "total_functions": 3,
+  "total_methods": 3,
+  "total_tests": 1,
+  "total_dependencies": 4,
+  "total_symbols": 9,
+  "largest_files": [
+    {
+      "file": "services/order_service.py",
+      "lines_of_code": 80,
+      "symbols": 1
+    },
+    {
+      "file": "repositories/order_repository.py",
+      "lines_of_code": 60,
+      "symbols": 1
+    },
+    {
+      "file": "controllers/order_controller.py",
+      "lines_of_code": 50,
+      "symbols": 1
+    },
+    {
+      "file": "utils/helpers.py",
+      "lines_of_code": 30,
+      "symbols": 1
+    },
+    {
+      "file": "tests/test_orders.py",
+      "lines_of_code": 25,
+      "symbols": 1
+    }
+  ],
+  "most_connected_modules": [
+    {
+      "file": "services/order_service.py",
+      "total_connections": 4,
+      "dependencies": 2,
+      "dependents": 2
+    },
+    {
+      "file": "controllers/order_controller.py",
+      "total_connections": 1,
+      "dependencies": 1,
+      "dependents": 0
+    },
+    {
+      "file": "repositories/order_repository.py",
+      "total_connections": 1,
+      "dependencies": 0,
+      "dependents": 1
+    },
+    {
+      "file": "tests/test_orders.py",
+      "total_connections": 1,
+      "dependencies": 1,
+      "dependents": 0
+    },
+    {
+      "file": "utils/helpers.py",
+      "total_connections": 1,
+      "dependencies": 0,
+      "dependents": 1
+    }
+  ],
+  "most_reused_classes": [],
+  "dead_code_candidates": [
+    "utils/helpers.py::_internal_calc (function)"
+  ],
+  "entry_points": [],
+  "public_apis": [
+    "controllers/order_controller.py::OrderController",
+    "controllers/order_controller.py::get_order"
+  ],
+  "config_files": [],
+  "build_files": [],
+  "package_managers": [],
+  "detected_architectures": [
+    {
+      "pattern_name": "Modular Monolith",
+      "confidence": 0.9,
+      "matched_indicators": [
+        "Unified repository structure with co-located components."
+      ],
+      "layers_detected": [
+        "Presentation / API / CLI",
+        "Business Logic / Core",
+        "Data Access / Repository",
+        "Infrastructure / Adapters",
+        "Testing & QA"
+      ],
+      "description": "Single deployable application with well-defined internal modular boundaries."
+    },
+    {
+      "pattern_name": "Layered Architecture",
+      "confidence": 0.85,
+      "matched_indicators": [
+        "Distinct separation of presentation, domain/business logic, and data access layers."
+      ],
+      "layers_detected": [
+        "Presentation / API / CLI",
+        "Business Logic / Core",
+        "Data Access / Repository",
+        "Infrastructure / Adapters",
+        "Testing & QA"
+      ],
+      "description": "Separates system concerns into hierarchical presentation, service/domain, and data persistence layers."
+    },
+    {
+      "pattern_name": "Service Layer",
+      "confidence": 0.75,
+      "matched_indicators": [
+        "Found 1 service modules: services/order_service.py"
+      ],
+      "layers_detected": [
+        "Business Logic / Core"
+      ],
+      "description": "Defines an application's boundary with a layer of services to encapsulate business workflows."
+    },
+    {
+      "pattern_name": "Repository Pattern",
+      "confidence": 0.7,
+      "matched_indicators": [
+        "Found 1 repository/DAO modules: repositories/order_repository.py"
+      ],
+      "layers_detected": [
+        "Data Access / Repository"
+      ],
+      "description": "Mediates between the domain and data mapping layers using collection-like interfaces."
+    }
+  ],
+  "architecture_layers": [
+    {
+      "name": "Presentation / API / CLI",
+      "modules": [
+        "controllers/order_controller.py"
+      ],
+      "responsibilities": [
+        "Provides presentation / api / cli capabilities for 1 modules."
+      ],
+      "dependencies": [
+        "Business Logic / Core"
+      ],
+      "confidence": 0.6
+    },
+    {
+      "name": "Business Logic / Core",
+      "modules": [
+        "services/order_service.py"
+      ],
+      "responsibilities": [
+        "Provides business logic / core capabilities for 1 modules."
+      ],
+      "dependencies": [
+        "Data Access / Repository",
+        "Infrastructure / Adapters"
+      ],
+      "confidence": 0.6
+    },
+    {
+      "name": "Data Access / Repository",
+      "modules": [
+        "repositories/order_repository.py"
+      ],
+      "responsibilities": [
+        "Provides data access / repository capabilities for 1 modules."
+      ],
+      "dependencies": [],
+      "confidence": 0.6
+    },
+    {
+      "name": "Infrastructure / Adapters",
+      "modules": [
+        ".gitignore",
+        "project_plan.json",
+        "utils/helpers.py"
+      ],
+      "responsibilities": [
+        "Provides infrastructure / adapters capabilities for 3 modules."
+      ],
+      "dependencies": [],
+      "confidence": 0.8
+    },
+    {
+      "name": "Testing & QA",
+      "modules": [
+        "tests/test_orders.py"
+      ],
+      "responsibilities": [
+        "Provides testing & qa capabilities for 1 modules."
+      ],
+      "dependencies": [
+        "Business Logic / Core"
+      ],
+      "confidence": 0.6
+    }
+  ],
+  "module_summaries": {
+    ".gitignore": {
+      "module_path": ".gitignore",
+      "purpose": "Component module for .gitignore functionality.",
+      "responsibilities": [
+        "Maintains module-level configuration and utility exports."
+      ],
+      "exports": [],
+      "dependencies": [],
+      "dependents": [],
+      "public_classes": [],
+      "internal_classes": [],
+      "functions": [],
+      "risk": "LOW",
+      "complexity": "LOW",
+      "lines_of_code": 5
+    },
+    "controllers/order_controller.py": {
+      "module_path": "controllers/order_controller.py",
+      "purpose": "Encapsulates OrderController business logic and data structures.",
+      "responsibilities": [
+        "Declares class abstractions: OrderController.",
+        "Integrates with 1 downstream dependencies."
+      ],
+      "exports": [
+        "OrderController"
+      ],
+      "dependencies": [
+        "services/order_service.py"
+      ],
+      "dependents": [],
+      "public_classes": [
+        "OrderController"
+      ],
+      "internal_classes": [],
+      "functions": [],
+      "risk": "LOW",
+      "complexity": "LOW",
+      "lines_of_code": 50
+    },
+    "project_plan.json": {
+      "module_path": "project_plan.json",
+      "purpose": "Component module for project plan functionality.",
+      "responsibilities": [
+        "Maintains module-level configuration and utility exports."
+      ],
+      "exports": [],
+      "dependencies": [],
+      "dependents": [],
+      "public_classes": [],
+      "internal_classes": [],
+      "functions": [],
+      "risk": "LOW",
+      "complexity": "LOW",
+      "lines_of_code": 1
+    },
+    "repositories/order_repository.py": {
+      "module_path": "repositories/order_repository.py",
+      "purpose": "Encapsulates OrderRepository business logic and data structures.",
+      "responsibilities": [
+        "Declares class abstractions: OrderRepository."
+      ],
+      "exports": [
+        "OrderRepository"
+      ],
+      "dependencies": [],
+      "dependents": [
+        "services/order_service.py"
+      ],
+      "public_classes": [
+        "OrderRepository"
+      ],
+      "internal_classes": [],
+      "functions": [],
+      "risk": "LOW",
+      "complexity": "LOW",
+      "lines_of_code": 60
+    },
+    "services/order_service.py": {
+      "module_path": "services/order_service.py",
+      "purpose": "Encapsulates OrderService business logic and data structures.",
+      "responsibilities": [
+        "Declares class abstractions: OrderService.",
+        "Integrates with 2 downstream dependencies."
+      ],
+      "exports": [
+        "OrderService"
+      ],
+      "dependencies": [
+        "repositories/order_repository.py",
+        "utils/helpers.py"
+      ],
+      "dependents": [
+        "controllers/order_controller.py",
+        "tests/test_orders.py"
+      ],
+      "public_classes": [
+        "OrderService"
+      ],
+      "internal_classes": [],
+      "functions": [],
+      "risk": "MEDIUM",
+      "complexity": "LOW",
+      "lines_of_code": 80
+    },
+    "tests/test_orders.py": {
+      "module_path": "tests/test_orders.py",
+      "purpose": "Provides procedural routines for test_process_order.",
+      "responsibilities": [
+        "Implements helper/procedural functions: test_process_order.",
+        "Integrates with 1 downstream dependencies."
+      ],
+      "exports": [
+        "test_process_order"
+      ],
+      "dependencies": [
+        "services/order_service.py"
+      ],
+      "dependents": [],
+      "public_classes": [],
+      "internal_classes": [],
+      "functions": [
+        "test_process_order"
+      ],
+      "risk": "LOW",
+      "complexity": "LOW",
+      "lines_of_code": 25
+    },
+    "utils/helpers.py": {
+      "module_path": "utils/helpers.py",
+      "purpose": "Provides procedural routines for format_currency, _internal_calc.",
+      "responsibilities": [
+        "Implements helper/procedural functions: format_currency, _internal_calc."
+      ],
+      "exports": [
+        "format_currency"
+      ],
+      "dependencies": [],
+      "dependents": [
+        "services/order_service.py"
+      ],
+      "public_classes": [],
+      "internal_classes": [],
+      "functions": [
+        "_internal_calc",
+        "format_currency"
+      ],
+      "risk": "LOW",
+      "complexity": "LOW",
+      "lines_of_code": 30
+    }
+  },
+  "hotspots": [
+    {
+      "category": "high_fan_in",
+      "target": "services/order_service.py",
+      "score": 2.0,
+      "metric_name": "incoming_dependents",
+      "metric_value": 2,
+      "description": "Module 'services/order_service.py' is depended on by 2 other modules."
+    },
+    {
+      "category": "utility_class",
+      "target": "utils/helpers.py",
+      "score": 2.0,
+      "metric_name": "utility_functions",
+      "metric_value": 2,
+      "description": "Module 'utils/helpers.py' provides generic utility helpers across components."
+    }
+  ],
+  "circular_dependencies": [],
+  "summary": "Repository 'autodev_repo_test_xd8qczwt' consists of 7 modules, 3 classes, and 3 functions. Primary architecture detected: Modular Monolith. Static topology reveals no circular dependencies and 2 potential architectural hotspots."
+}
