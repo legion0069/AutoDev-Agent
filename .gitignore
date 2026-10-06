@@ -16,6 +16,10 @@ venv/
 .coverage
 htmlcov/
 
+# Logs
+*.log
+logs/*.log
+
 # Operating System Files
 .DS_Store
 Thumbs.db

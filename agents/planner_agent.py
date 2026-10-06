@@ -1,5 +1,5 @@
 """
-planner.py - Core Planning Engine for AutoDev (Version 1)
+planner_agent.py - Planner Agent for AutoDev
 
 Responsible for taking high-level project metadata (name, description,
 tech stack, and development duration) and generating a structured, day-by-day
@@ -259,14 +259,14 @@ def generate_project_plan(
 
 def save_project_plan(
     plan: Dict[str, Any],
-    filepath: str | Path = "project_plan.json",
+    filepath: str | Path = "memory/project_plan.json",
 ) -> Path:
     """
     Saves a project plan dictionary to a formatted JSON file.
 
     Args:
         plan: The plan dictionary.
-        filepath: Target file path (defaults to project_plan.json).
+        filepath: Target file path (defaults to memory/project_plan.json).
 
     Returns:
         The Path object of the saved file.
@@ -278,7 +278,9 @@ def save_project_plan(
     return path
 
 
-def load_project_plan(filepath: str | Path = "project_plan.json") -> Dict[str, Any]:
+def load_project_plan(
+    filepath: str | Path = "memory/project_plan.json",
+) -> Dict[str, Any]:
     """
     Loads and parses an existing project plan JSON file.
 

@@ -1,39 +1,52 @@
 # AutoDev (Version 1) 🚀
 
-> **Autonomous AI Software Development Agent** — Project Phasing & Planning Engine
+> **Autonomous AI Software Development Agent** — Modular Architecture
 
 AutoDev is an autonomous software development system designed to translate high-level software requirements into actionable, day-by-day development phases. In future versions, specialized execution agents will implement each phase sequentially, run tests, commit code, and push changes to GitHub.
 
-**Version 1** provides the foundational Python CLI and deterministic planning engine that collects project specifications and synthesizes a structured development plan stored in `project_plan.json`.
-
 ---
 
-## 📁 Project Architecture & Files
+## 📁 Project Architecture & Directory Structure
 
 ```
 autodev-agent/
-├── main.py             # CLI application and user input orchestrator
-├── planner.py          # Core planning engine and JSON export utilities
-├── project_plan.json   # Structured multi-day development plan output
-├── requirements.txt    # Dependency specification (Zero external deps for v1)
-└── README.md           # Project documentation and architecture guide
+├── agents/
+│   ├── __init__.py
+│   ├── planner_agent.py      # Core planning engine and multi-day phase synthesizer
+│   ├── developer_agent.py    # Code implementation agent (Placeholder)
+│   ├── tester_agent.py       # Automated testing and validation agent (Placeholder)
+│   └── git_agent.py          # Version control and commit/push agent (Placeholder)
+├── core/
+│   ├── __init__.py
+│   ├── config.py             # System configuration and environment settings (Placeholder)
+│   └── llm.py                # Foundation model / LLM client interface (Placeholder)
+├── memory/
+│   ├── project_plan.json     # Structured multi-day development plan output
+│   └── state.json            # Agent lifecycle and execution state
+├── projects/                 # Target workspace for generated projects
+├── logs/                     # Execution run logs and operational traces
+├── main.py                   # CLI application and user input orchestrator
+├── requirements.txt          # Dependency specification (Zero external deps for v1)
+└── README.md                 # Project documentation and architecture guide
 ```
 
-### Detailed File Overview
+### Detailed Component Overview
 
-| File | Purpose | Key Responsibilities |
+| Component | Path | Purpose |
 | :--- | :--- | :--- |
-| [`main.py`](file:///c:/Users/veruk/Desktop/autodev-agent/main.py) | **CLI Entry Point** | Interactive CLI prompt handling, argument parsing (`--name`, `--desc`, `--stack`, `--days`), terminal formatting, and orchestration. |
-| [`planner.py`](file:///c:/Users/veruk/Desktop/autodev-agent/planner.py) | **Planning Engine** | Heuristic phase synthesis, task decomposition, milestone assignment, commit message generation, and JSON serialization. |
-| [`project_plan.json`](file:///c:/Users/veruk/Desktop/autodev-agent/project_plan.json) | **Plan Data Store** | The structured output contract consumed by subsequent agent stages (Day 1..N phases, goals, tasks, deliverables, testing focus). |
-| [`requirements.txt`](file:///c:/Users/veruk/Desktop/autodev-agent/requirements.txt) | **Dependencies** | Python environment definition (built with pure Python 3.8+ standard library). |
-| [`README.md`](file:///c:/Users/veruk/Desktop/autodev-agent/README.md) | **Documentation** | System overview, setup guide, usage instructions, and roadmap. |
+| **CLI Orchestrator** | [`main.py`](file:///c:/Users/veruk/Desktop/autodev-agent/main.py) | Guided CLI prompt handling, argument parsing (`--name`, `--desc`, `--stack`, `--days`, `--output`), and orchestration. |
+| **Planner Agent** | [`agents/planner_agent.py`](file:///c:/Users/veruk/Desktop/autodev-agent/agents/planner_agent.py) | Multi-phase plan synthesis, task decomposition, milestone assignment, commit message generation, and JSON serialization. |
+| **Developer Agent** | [`agents/developer_agent.py`](file:///c:/Users/veruk/Desktop/autodev-agent/agents/developer_agent.py) | Code generation and feature implementation worker. |
+| **Tester Agent** | [`agents/tester_agent.py`](file:///c:/Users/veruk/Desktop/autodev-agent/agents/tester_agent.py) | Test runner, code verification, and regression tester. |
+| **Git Agent** | [`agents/git_agent.py`](file:///c:/Users/veruk/Desktop/autodev-agent/agents/git_agent.py) | Automated git operations (branching, commits, remote sync). |
+| **Core Config & LLM**| [`core/`](file:///c:/Users/veruk/Desktop/autodev-agent/core/) | Central settings and AI model provider interfaces. |
+| **Memory Store** | [`memory/`](file:///c:/Users/veruk/Desktop/autodev-agent/memory/) | Persistent state and generated `project_plan.json`. |
 
 ---
 
 ## ⚙️ Requirements
 
-- **Python**: 3.8 or higher (no third-party dependencies required for Version 1)
+- **Python**: 3.8 or higher (zero external dependencies required for Version 1)
 
 ---
 
@@ -46,12 +59,6 @@ Run the CLI without arguments to enter the guided interactive prompt:
 python main.py
 ```
 
-You will be prompted for:
-1. **Project Name** (e.g., `TaskFlow API`)
-2. **Project Description** (e.g., `A collaborative task management backend`)
-3. **Technology Stack** (e.g., `Python, FastAPI, SQLite, Pytest`)
-4. **Number of Development Days** (e.g., `3`)
-
 ### 2. Command-Line Arguments Mode
 You can also generate plans directly using CLI flags:
 
@@ -60,20 +67,20 @@ python main.py --name "TaskFlow API" \
                --desc "A collaborative task management backend" \
                --stack "Python, FastAPI, SQLite, Pytest" \
                --days 3 \
-               --output "project_plan.json"
+               --output "memory/project_plan.json"
 ```
 
 ---
 
-## 📋 Structured Plan Format (`project_plan.json`)
+## 📋 Structured Plan Format (`memory/project_plan.json`)
 
-The planner generates a schema ready for autonomous agent execution:
+The planner generates a structured schema ready for autonomous agent execution:
 
 ```json
 {
-  "project_name": "TaskFlow API",
-  "project_description": "A collaborative task management backend",
-  "technology_stack": "Python, FastAPI, SQLite, Pytest",
+  "project_name": "AutoDev Agent",
+  "project_description": "Autonomous AI Software Development Agent",
+  "technology_stack": "Python, OpenAI API, Git, Pytest",
   "total_days": 3,
   "created_at": "2026-10-04T23:15:30",
   "phases": [
@@ -81,7 +88,7 @@ The planner generates a schema ready for autonomous agent execution:
       "day": 1,
       "phase_name": "Project Setup & Architectural Skeleton",
       "goals": [
-        "Initialize repository structure for TaskFlow API",
+        "Initialize repository structure for AutoDev Agent",
         "Configure development environment and tooling",
         "Establish base architectural patterns"
       ],
@@ -101,12 +108,3 @@ The planner generates a schema ready for autonomous agent execution:
   ]
 }
 ```
-
----
-
-## 🛣️ Roadmap
-
-- **Version 1 (Current)**: CLI input collector & structured day-by-day JSON planner.
-- **Version 2**: LLM-augmented planning agent (OpenAI / Gemini / Anthropic API integration) for domain-specific deep code task generation.
-- **Version 3**: Autonomous Execution Agent (reads `project_plan.json`, writes code per day, executes unit tests, automatically creates Git commits).
-- **Version 4**: GitHub integration & CI/CD workflow automation (PR creation, automated reviews, GitHub Actions dispatch).

@@ -1,20 +1,20 @@
 {
   "project_name": "AutoDev Agent",
   "project_description": "Autonomous AI Software Development Agent",
-  "technology_stack": "Python, OpenAI API, Git, Pytest",
+  "technology_stack": "Python, Pytest",
   "total_days": 3,
-  "created_at": "2026-10-04T23:15:30",
+  "created_at": "2026-10-05T12:17:47",
   "phases": [
     {
       "day": 1,
       "phase_name": "Project Setup & Architectural Skeleton",
       "goals": [
         "Initialize repository structure for AutoDev Agent",
-        "Configure development environment and tooling for Python, OpenAI API, Git, Pytest",
+        "Configure development environment and tooling for Python, Pytest",
         "Establish base architectural patterns and configuration loading"
       ],
       "tasks": [
-        "Create directory structure and initialize dependency management for Python, OpenAI API, Git, Pytest",
+        "Create directory structure and initialize dependency management for Python, Pytest",
         "Implement configuration management and environment variables handling",
         "Create base application entry point with health check / status verification"
       ],

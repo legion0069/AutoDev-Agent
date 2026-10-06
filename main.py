@@ -3,7 +3,7 @@ main.py - AutoDev CLI Interface (Version 1)
 
 Autonomous AI Software Development Agent - Phase 1 Planning Tool.
 Interactively collects project requirements and outputs a day-by-day
-structured development plan saved to project_plan.json.
+structured development plan saved to memory/project_plan.json.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-from planner import generate_project_plan, save_project_plan
+from agents.planner_agent import generate_project_plan, save_project_plan
 
 
 def print_banner() -> None:
@@ -141,8 +141,8 @@ def parse_arguments() -> argparse.Namespace:
         "--output",
         "-o",
         type=str,
-        default="project_plan.json",
-        help="Output JSON file path (default: project_plan.json)",
+        default="memory/project_plan.json",
+        help="Output JSON file path (default: memory/project_plan.json)",
     )
     return parser.parse_args()
 
