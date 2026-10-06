@@ -61,6 +61,32 @@ from core.repository_analyzer import (
     RepositoryAnalyzer,
     RepositoryOverview,
 )
+from core.architecture_manager import (
+    ArchitectureDecision,
+    ArchitectureManager,
+    DecisionCategory,
+    DecisionStatus,
+    DesignValidator,
+    DesignViolation,
+    ValidationReport,
+)
+from core.engineering_decision_engine import (
+    DecisionEvaluation,
+    DecisionOption,
+    DecisionReport,
+    EngineeringDecision,
+    EngineeringDecisionEngine,
+)
+from core.refactoring_engine import (
+    DebtCategory,
+    DebtSeverity,
+    RefactoringCandidate,
+    RefactoringEngine,
+    RefactoringMetrics,
+    RefactoringPlan as TechnicalDebtPlan,
+    RefactoringReport as TechnicalDebtReport,
+    TechnicalDebtIssue,
+)
 from core.symbol_graph import SymbolGraph
 
 
@@ -70,7 +96,9 @@ class PromptBuilder:
     Integrates ContextInjector (historical engineering memory), CodeContextRetriever
     (minimal relevant code slices), ImpactAnalyzer (blast radius & breaking change risks),
     RefactoringPlanner (safe modification execution plan), RepositoryAnalyzer
-    (repository architecture intelligence), and ChangePlanner (semantic change blueprint).
+    (repository architecture intelligence), ChangePlanner (semantic change blueprint),
+    ArchitectureManager (ADR engine & design validation), and EngineeringDecisionEngine
+    (tradeoff evaluation & optimal strategy selection).
     """
 
     def __init__(
@@ -83,6 +111,9 @@ class PromptBuilder:
         refactoring_planner: Optional[RefactoringPlanner] = None,
         repository_analyzer: Optional[RepositoryAnalyzer] = None,
         change_planner: Optional[ChangePlanner] = None,
+        architecture_manager: Optional[ArchitectureManager] = None,
+        decision_engine: Optional[EngineeringDecisionEngine] = None,
+        refactoring_engine: Optional[RefactoringEngine] = None,
         symbol_graph: Optional[SymbolGraph] = None,
     ) -> None:
         """
@@ -97,6 +128,8 @@ class PromptBuilder:
             refactoring_planner: Optional RefactoringPlanner instance.
             repository_analyzer: Optional RepositoryAnalyzer instance.
             change_planner: Optional ChangePlanner instance.
+            architecture_manager: Optional ArchitectureManager instance.
+            decision_engine: Optional EngineeringDecisionEngine instance.
             symbol_graph: Optional SymbolGraph instance used to construct subsystems.
         """
         self.max_file_chars = max_file_chars
@@ -148,6 +181,26 @@ class PromptBuilder:
             self.change_planner = ChangePlanner(symbol_graph=symbol_graph)
         else:
             self.change_planner = None
+
+        # Architecture Manager (ADR Engine)
+        if architecture_manager is not None:
+            self.architecture_manager = architecture_manager
+        else:
+            self.architecture_manager = None
+
+        # Engineering Decision Engine (v1.8)
+        if decision_engine is not None:
+            self.decision_engine = decision_engine
+        else:
+            self.decision_engine = None
+
+        # Technical Debt & Refactoring Engine (v1.9)
+        if refactoring_engine is not None:
+            self.refactoring_engine = refactoring_engine
+        elif symbol_graph is not None:
+            self.refactoring_engine = RefactoringEngine(symbol_graph=symbol_graph)
+        else:
+            self.refactoring_engine = None
 
 
 
@@ -203,7 +256,8 @@ class PromptBuilder:
         Constructs the CURRENT DEVELOPMENT PHASE context section.
         """
         current_day = context.get("current_day", 1)
-        current_phase = context.get("current_phase", {}) or {}
+        raw_phase = context.get("current_phase", {})
+        current_phase = raw_phase if isinstance(raw_phase, dict) else {}
         phase_name = current_phase.get("phase_name", f"Day {current_day} Phase")
         goals = current_phase.get("goals", [])
         deliverables = current_phase.get("deliverables", [])
@@ -781,6 +835,222 @@ class PromptBuilder:
 
         return "\n".join(feedback_parts)
 
+    def build_adr_section(
+        self,
+        context: Dict[str, Any],
+        task: Optional[Union[Task, Dict[str, Any]]] = None,
+    ) -> Optional[str]:
+        """
+        Constructs the ARCHITECTURAL DECISIONS section with accepted, rejected,
+        and task-relevant decisions as well as required constraints and validation warnings.
+        """
+        manager = self.architecture_manager or context.get("architecture_manager")
+        adrs: List[ArchitectureDecision] = []
+
+        if "architecture_decisions" in context and isinstance(context["architecture_decisions"], list):
+            adrs = context["architecture_decisions"]
+        elif manager and hasattr(manager, "list_decisions"):
+            adrs = manager.list_decisions()
+
+        if not adrs and not (manager and hasattr(manager, "search_relevant_for_task")):
+            return None
+
+        accepted = [d for d in adrs if d.status == DecisionStatus.ACCEPTED.value]
+        rejected = [d for d in adrs if d.status == DecisionStatus.REJECTED.value]
+
+        relevant: List[ArchitectureDecision] = []
+        if task and manager and hasattr(manager, "search_relevant_for_task"):
+            relevant = manager.search_relevant_for_task(task, context, limit=5)
+        elif task:
+            task_title = str(getattr(task, "title", "") if hasattr(task, "title") else (task.get("title", "") if isinstance(task, dict) else str(task)))
+            relevant = [d for d in accepted if any(tok in d.title.lower() or tok in d.decision.lower() for tok in task_title.lower().split() if len(tok) > 2)][:5]
+
+        lines = [
+            "==================================================",
+            "ARCHITECTURAL DECISIONS",
+            "==================================================",
+        ]
+
+        # 1. Accepted Decisions
+        if accepted:
+            lines.append("### Accepted Decisions")
+            for d in accepted[:8]:
+                lines.append(f"- **[{d.id}] {d.title}** ({d.category}): {d.decision}")
+                if d.consequences:
+                    lines.append(f"  *Consequences/Rules*: {d.consequences}")
+            lines.append("")
+
+        # 2. Rejected Decisions
+        if rejected:
+            lines.append("### Rejected Decisions (Do NOT Use These Patterns)")
+            for d in rejected[:5]:
+                lines.append(f"- **[{d.id}] {d.title}**: {d.decision}")
+            lines.append("")
+
+        # 3. Relevant Decisions
+        if relevant:
+            lines.append("### Relevant Decisions for Current Task")
+            for d in relevant:
+                lines.append(f"- **[{d.id}] {d.title}** (Status: {d.status.upper()})")
+                if d.context:
+                    lines.append(f"  *Context*: {d.context}")
+                lines.append(f"  *Decision*: {d.decision}")
+            lines.append("")
+
+        # 4. Required Constraints
+        lines.append("### Required Architectural Constraints")
+        constraints = [
+            "Strictly follow established ADRs and architectural patterns.",
+            "Do not introduce patterns marked as REJECTED or DEPRECATED.",
+            "Maintain layer boundaries (domain models must never import controllers/views).",
+            "Do not execute raw database SQL queries inside services/controllers; use repository pattern.",
+            "Inject dependencies via constructors rather than hardcoding concrete implementations.",
+        ]
+        for c in constraints:
+            lines.append(f"- {c}")
+
+        # 5. Validation Warnings
+        val_report = context.get("validation_report")
+        if val_report and hasattr(val_report, "violations") and val_report.violations:
+            lines.append("\n### Active Architectural Violations / Warnings to Remediate:")
+            for v in val_report.violations:
+                lines.append(f"- [{v.severity}] {v.rule_name} in {v.target_file}: {v.description} -> {v.recommendation}")
+
+        return "\n".join(lines)
+
+    def build_engineering_decision_section(
+        self,
+        context: Dict[str, Any],
+        task: Optional[Union[Task, Dict[str, Any]]] = None,
+    ) -> Optional[str]:
+        """
+        Constructs the ENGINEERING DECISION section detailing chosen strategy, reasoning,
+        alternatives considered, tradeoffs, expected risks, and implementation plan.
+        """
+        report: Optional[DecisionReport] = None
+        decision: Optional[EngineeringDecision] = None
+
+        if "decision_report" in context and isinstance(context["decision_report"], DecisionReport):
+            report = context["decision_report"]
+        elif "engineering_decision" in context:
+            if isinstance(context["engineering_decision"], DecisionReport):
+                report = context["engineering_decision"]
+            elif isinstance(context["engineering_decision"], EngineeringDecision):
+                decision = context["engineering_decision"]
+        elif self.decision_engine is not None and task is not None:
+            try:
+                report = self.decision_engine.decide(
+                    task=task,
+                    impact_report=context.get("impact_report"),
+                    code_context=context.get("context_bundle") or context.get("project_files"),
+                    symbol_graph=context.get("symbol_graph"),
+                    repository_overview=context.get("repository_analysis"),
+                    architecture_decisions=context.get("architecture_decisions"),
+                )
+            except Exception:
+                report = None
+
+        if not report and not decision:
+            return None
+
+        sel_opt = report.selected_option if report else decision.selected_option
+        alts = [o for o in (report.options if report else decision.alternative_options) if o.id != sel_opt.id]
+        reasoning = report.summary if report else decision.reasoning
+        tradeoffs = decision.tradeoffs if decision else (
+            [f"Advantages: {'; '.join(sel_opt.advantages)}", f"Accepted Tradeoffs: {'; '.join(sel_opt.disadvantages)}"]
+            if (sel_opt.advantages or sel_opt.disadvantages) else []
+        )
+
+        lines = [
+            "========================================",
+            "ENGINEERING DECISION",
+            "========================================",
+            f"Chosen Strategy: {sel_opt.title} (Complexity: {sel_opt.estimated_complexity} | Risk: {sel_opt.estimated_risk})",
+            f"\nWhy:\n{reasoning}",
+        ]
+
+        if alts:
+            lines.append("\nAlternatives Considered:")
+            for a in alts:
+                lines.append(f"- {a.title} ({a.estimated_complexity} Complexity, {a.estimated_risk} Risk): {a.description}")
+
+        if tradeoffs:
+            lines.append("\nTradeoffs:")
+            for t in tradeoffs:
+                lines.append(f"- {t}")
+
+        lines.append(f"\nExpected Risks:\n- Risk Rating: {sel_opt.estimated_risk} | Complexity Rating: {sel_opt.estimated_complexity}")
+        if sel_opt.disadvantages:
+            for dis in sel_opt.disadvantages:
+                lines.append(f"- {dis}")
+
+        if sel_opt.implementation_steps:
+            lines.append("\nImplementation Plan:")
+            for idx, step in enumerate(sel_opt.implementation_steps, 1):
+                lines.append(f"{idx}. {step}")
+
+        return "\n".join(lines)
+
+    def build_technical_debt_section(
+        self,
+        context: Dict[str, Any],
+        task: Optional[Union[Task, Dict[str, Any]]] = None,
+    ) -> Optional[str]:
+        """
+        Constructs the TECHNICAL DEBT ANALYSIS section detailing detected issues,
+        recommended refactoring, priority, risk, and expected improvements.
+        """
+        report: Optional[TechnicalDebtReport] = None
+
+        if "refactoring_report" in context and isinstance(context["refactoring_report"], TechnicalDebtReport):
+            report = context["refactoring_report"]
+        elif "technical_debt_report" in context and isinstance(context["technical_debt_report"], TechnicalDebtReport):
+            report = context["technical_debt_report"]
+        elif self.refactoring_engine is not None:
+            proj_root = context.get("project_root", ".")
+            try:
+                report = self.refactoring_engine.analyze_project(project_root=proj_root, task=task)
+            except Exception:
+                report = None
+
+        if not report or (not report.issues and not report.candidates):
+            return None
+
+        lines = [
+            "========================================",
+            "TECHNICAL DEBT ANALYSIS",
+            "========================================",
+            f"Overall Technical Debt Score: {report.metrics.technical_debt_score:.1f}/100 (Maintainability Index: {report.metrics.maintainability_index:.1f}/100)",
+            f"Should Refactor First: {'YES' if report.should_refactor_first else 'NO'}",
+        ]
+
+        if report.issues:
+            lines.append("\nDetected Issues:")
+            for iss in report.issues[:8]:
+                sym_part = f" in `{iss.symbol}`" if iss.symbol else ""
+                lines.append(f"  - [{iss.severity}] {iss.category}: {iss.title}{sym_part} ({iss.file})")
+
+        if report.candidates:
+            lines.append("\nRecommended Refactoring:")
+            for cand in report.candidates[:3]:
+                lines.append(f"  - {cand.title}: {cand.reason}")
+
+            top_cand = report.candidates[0]
+            lines.append(f"\nPriority: {top_cand.risk} (Score: {top_cand.priority_score:.1f})")
+            lines.append(f"Risk: {top_cand.risk}")
+        else:
+            lines.append("\nPriority: LOW (Score: 0.0)")
+            lines.append("Risk: LOW")
+
+        if report.roi_estimate:
+            dev_saved = report.roi_estimate.get("development_time_saved_hours", 0.0)
+            bug_red = report.roi_estimate.get("bug_reduction_percent", 0.0)
+            lines.append(f"Expected Improvement: +{dev_saved:.1f}h dev time saved, ~{bug_red:.1f}% bug reduction probability")
+        else:
+            lines.append("Expected Improvement: Code clarity and reduced future maintenance effort")
+
+        return "\n".join(lines)
+
     def build_directory_section(self, directory_tree: List[str]) -> str:
         """
         Constructs the EXISTING DIRECTORY STRUCTURE section.
@@ -931,6 +1201,21 @@ class PromptBuilder:
         arch_sec = self.build_architecture_section(context, task)
         if arch_sec:
             sections.append(arch_sec)
+
+        # Architecture Decision Records & Design Validation (ADR Engine)
+        adr_sec = self.build_adr_section(context, task)
+        if adr_sec:
+            sections.append(adr_sec)
+
+        # Autonomous Engineering Decision Engine (v1.8)
+        eng_decision_sec = self.build_engineering_decision_section(context, task)
+        if eng_decision_sec:
+            sections.append(eng_decision_sec)
+
+        # Autonomous Technical Debt Analysis & Refactoring Engine (v1.9)
+        tech_debt_sec = self.build_technical_debt_section(context, task)
+        if tech_debt_sec:
+            sections.append(tech_debt_sec)
 
         # 5. Injected Relevant Project Memory
         memory_sec = self.build_memory_section(context, task)

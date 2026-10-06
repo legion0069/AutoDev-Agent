@@ -3,8 +3,8 @@
     "id": "DAY1-TASK01",
     "title": {
       "id": "DAY1-T01",
-      "title": "Update order service logic",
-      "description": "Implement service method",
+      "title": "Create order service",
+      "description": "Implement service logic",
       "priority": 1,
       "status": "pending",
       "dependencies": [],
@@ -12,7 +12,7 @@
         "services/order_service.py"
       ]
     },
-    "description": "Execute: {'id': 'DAY1-T01', 'title': 'Update order service logic', 'description': 'Implement service method', 'priority': 1, 'status': 'pending', 'dependencies': [], 'estimated_files': ['services/order_service.py']} as part of Phase 1 on ChangePlanOrchestratorTest.",
+    "description": "Execute: {'id': 'DAY1-T01', 'title': 'Create order service', 'description': 'Implement service logic', 'priority': 1, 'status': 'pending', 'dependencies': [], 'estimated_files': ['services/order_service.py']} as part of Foundation on TestECommerce.",
     "priority": 1,
     "status": "pending",
     "dependencies": [],

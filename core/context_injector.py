@@ -23,6 +23,7 @@ if __name__ == "__main__" and __package__ is None:
 if TYPE_CHECKING:
     from agents.task_planner_agent import Task
 
+from core.architecture_manager import ArchitectureDecision, ArchitectureManager
 from core.memory_manager import MemoryCategory, MemoryEntry, MemoryManager
 
 # Configure module logger
@@ -42,12 +43,13 @@ class ScoredMemory:
 class ContextInjector:
     """
     Context Injection Engine responsible for selecting, ranking, deduplicating,
-    and formatting relevant long-term engineering memories for LLM prompts.
+    and formatting relevant long-term engineering memories and architectural decisions for LLM prompts.
     """
 
     def __init__(
         self,
         memory_manager: Optional[MemoryManager] = None,
+        architecture_manager: Optional[ArchitectureManager] = None,
         max_tokens: int = 2500,
         max_memories: int = 10,
     ) -> None:
@@ -56,12 +58,66 @@ class ContextInjector:
 
         Args:
             memory_manager: MemoryManager instance. If None, instantiates default MemoryManager.
+            architecture_manager: Optional ArchitectureManager instance.
             max_tokens: Default maximum token budget for the injected prompt memory block.
             max_memories: Maximum number of memories to retrieve and inject.
         """
         self.memory_manager = memory_manager or MemoryManager(auto_create=True)
+        self.architecture_manager = architecture_manager
         self.max_tokens = max_tokens
         self.max_memories = max_memories
+
+    # -------------------------------------------------------------------------
+    # Architectural Decisions Retrieval API
+    # -------------------------------------------------------------------------
+
+    def retrieve_relevant_decisions(
+        self,
+        context: Dict[str, Any],
+        task: Union[Task, Dict[str, Any]],
+        max_decisions: Optional[int] = None,
+        architecture_manager: Optional[ArchitectureManager] = None,
+    ) -> List[ArchitectureDecision]:
+        """
+        Retrieves Architecture Decision Records relevant to task title, technology,
+        estimated files, affected modules, and priority.
+        """
+        mgr = architecture_manager or self.architecture_manager or context.get("architecture_manager")
+        if not mgr:
+            return []
+
+        limit = max_decisions or 5
+        return mgr.search_relevant_for_task(task, context, limit=limit)
+
+    def retrieve_engineering_decision(
+        self,
+        context: Dict[str, Any],
+        task: Union[Task, Dict[str, Any]],
+        decision_engine: Optional[Any] = None,
+    ) -> Optional[Any]:
+        """
+        Retrieves precomputed engineering decision or delegates to EngineeringDecisionEngine.
+        """
+        if "decision_report" in context:
+            return context["decision_report"]
+        if "engineering_decision" in context:
+            return context["engineering_decision"]
+
+        engine = decision_engine or context.get("decision_engine")
+        if engine and hasattr(engine, "decide"):
+            try:
+                return engine.decide(
+                    task=task,
+                    impact_report=context.get("impact_report"),
+                    code_context=context.get("context_bundle") or context.get("project_files"),
+                    symbol_graph=context.get("symbol_graph"),
+                    repository_overview=context.get("repository_analysis"),
+                    architecture_decisions=context.get("architecture_decisions"),
+                )
+            except Exception as err:
+                logger.warning("EngineeringDecisionEngine error in ContextInjector: %s", err)
+
+        return None
 
     # -------------------------------------------------------------------------
     # Public API
@@ -494,6 +550,17 @@ class ContextInjector:
     def _normalize_for_dedup(self, text: str) -> str:
         """Normalizes string for duplicate detection."""
         return re.sub(r"\s+", " ", text.strip().lower())
+
+    def retrieve_technical_debt_context(self, context: Dict[str, Any]) -> str:
+        """Extracts and formats technical debt summary from context."""
+        report = context.get("refactoring_report") or context.get("technical_debt_report")
+        if not report:
+            return ""
+        if hasattr(report, "summary") and report.summary:
+            return report.summary
+        if isinstance(report, dict):
+            return report.get("summary", "")
+        return ""
 
     def _estimate_tokens(self, text: str) -> int:
         """Deterministic token estimator (~3.8 chars per token)."""

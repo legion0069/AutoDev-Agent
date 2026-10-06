@@ -1,0 +1,34 @@
+{
+  "version": "1.4",
+  "exported_at": "2026-10-06T19:32:53+00:00",
+  "file_hashes": {
+    "sample.py": "6aaa4c418d6790cadbd48c8f6b6fcd9de6c5c231ead4e9d72621fe2bf99290e3"
+  },
+  "symbols": [
+    {
+      "id": "sample.py:sample_fn",
+      "name": "sample_fn",
+      "qualified_name": "sample_fn",
+      "symbol_type": "function",
+      "language": "python",
+      "file": "sample.py",
+      "line": 1,
+      "end_line": 2,
+      "parent_symbol": null,
+      "visibility": "public",
+      "docstring": null,
+      "signature": "def sample_fn(a, b, c, d, e, f, g, h)",
+      "imports": [],
+      "calls": [],
+      "called_by": [],
+      "inherits": [],
+      "implements": [],
+      "references": [],
+      "decorators": [],
+      "hash": "254531170374d67474298ef517b243438d5eaa3d496ebe980a20c15e67358a2e",
+      "file_path": "sample.py",
+      "line_start": 1
+    }
+  ],
+  "dependencies": []
+}

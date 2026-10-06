@@ -1,3 +1,31 @@
+from core.architecture_manager import (
+    ArchitectureDecision,
+    ArchitectureManager,
+    DecisionCategory,
+    DecisionStatus,
+    DesignValidator,
+    DesignViolation,
+    ValidationReport,
+    ViolationSeverity,
+)
+from core.engineering_decision_engine import (
+    DecisionEvaluation,
+    DecisionOption,
+    DecisionReport,
+    EngineeringDecision,
+    EngineeringDecisionEngine,
+)
+from core.refactoring_engine import (
+    DebtCategory,
+    DebtSeverity,
+    RefactoringAction as DebtRefactoringAction,
+    RefactoringCandidate,
+    RefactoringEngine,
+    RefactoringMetrics,
+    RefactoringPlan as DebtRefactoringPlan,
+    RefactoringReport as TechnicalDebtReport,
+    TechnicalDebtIssue,
+)
 from core.change_planner import (
     BreakingChange,
     ChangeClassification,
@@ -131,6 +159,28 @@ __all__ = [
     "ChangeClassification",
     "RefactoringType",
     "NecessityRank",
+    "ArchitectureDecision",
+    "ArchitectureManager",
+    "DecisionCategory",
+    "DecisionStatus",
+    "DesignValidator",
+    "DesignViolation",
+    "ValidationReport",
+    "ViolationSeverity",
+    "DecisionOption",
+    "DecisionEvaluation",
+    "EngineeringDecision",
+    "DecisionReport",
+    "EngineeringDecisionEngine",
+    "TechnicalDebtIssue",
+    "DebtSeverity",
+    "DebtCategory",
+    "RefactoringCandidate",
+    "DebtRefactoringAction",
+    "DebtRefactoringPlan",
+    "RefactoringMetrics",
+    "TechnicalDebtReport",
+    "RefactoringEngine",
 ]
 
 

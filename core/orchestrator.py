@@ -43,6 +43,20 @@ from agents.git_agent import CommitResult, GitAgent
 from agents.reviewer_agent import ReviewerAgent, ReviewResult
 from agents.task_planner_agent import Task, TaskPlannerAgent
 from agents.tester_agent import TesterAgent, TestResult
+from core.architecture_manager import (
+    ArchitectureDecision,
+    ArchitectureManager,
+    DesignValidator,
+    ValidationReport,
+    ViolationSeverity,
+)
+from core.engineering_decision_engine import (
+    DecisionEvaluation,
+    DecisionOption,
+    DecisionReport,
+    EngineeringDecision,
+    EngineeringDecisionEngine,
+)
 from core.change_planner import ChangePlan, ChangePlanner
 from core.code_context_retriever import CodeContextRetriever
 from core.context_builder import ContextBuilder
@@ -51,8 +65,16 @@ from core.llm import BaseLLM
 from core.refactoring_planner import RefactoringPlan, RefactoringPlanner
 from core.repository_analyzer import RepositoryAnalyzer, RepositoryOverview
 from core.requirement_planner import RequirementPlanner
-
-
+from core.refactoring_engine import (
+    DebtCategory,
+    DebtSeverity,
+    RefactoringCandidate,
+    RefactoringEngine,
+    RefactoringMetrics,
+    RefactoringPlan as TechnicalDebtPlan,
+    RefactoringReport as TechnicalDebtReport,
+    TechnicalDebtIssue,
+)
 from core.retry_engine import RetryEngine, RetryResult
 from core.state_manager import ExecutionRecord, ProjectState, StateManager
 
@@ -208,6 +230,10 @@ class Orchestrator:
         refactoring_planner: Optional[RefactoringPlanner] = None,
         repository_analyzer: Optional[RepositoryAnalyzer] = None,
         change_planner: Optional[ChangePlanner] = None,
+        architecture_manager: Optional[ArchitectureManager] = None,
+        design_validator: Optional[DesignValidator] = None,
+        decision_engine: Optional[EngineeringDecisionEngine] = None,
+        refactoring_engine: Optional[RefactoringEngine] = None,
         code_context_retriever: Optional[CodeContextRetriever] = None,
         requirement_planner: Optional[RequirementPlanner] = None,
         requirement: Optional[str] = None,
@@ -262,6 +288,10 @@ class Orchestrator:
         self.refactoring_planner = refactoring_planner
         self.repository_analyzer = repository_analyzer
         self.change_planner = change_planner
+        self.architecture_manager = architecture_manager
+        self.design_validator = design_validator or (DesignValidator(architecture_manager=self.architecture_manager) if self.architecture_manager else None)
+        self.decision_engine = decision_engine
+        self.refactoring_engine = refactoring_engine
         self.code_context_retriever = code_context_retriever
 
 
@@ -505,6 +535,49 @@ class Orchestrator:
                             self.logger.warning("ChangePlanner execution non-blocking warning: %s", err)
 
 
+                    # 2.7 Architecture Decision Retrieval & Design Validation (ADR Engine)
+                    val_report = None
+                    if hasattr(self, "architecture_manager") and self.architecture_manager:
+                        try:
+                            adrs = self.architecture_manager.search_relevant_for_task(task, context)
+                            context["architecture_decisions"] = adrs
+                            context["architecture_manager"] = self.architecture_manager
+                        except Exception as err:
+                            self.logger.warning("ArchitectureManager search warning: %s", err)
+
+                    validator_engine = getattr(self, "design_validator", None) or (self.architecture_manager.validator if getattr(self, "architecture_manager", None) else None)
+                    if validator_engine:
+                        try:
+                            self.logger.info("Validating Task [%s] against Architecture Decisions...", task.id)
+                            val_report = validator_engine.validate(
+                                task=task,
+                                code_context=context.get("context_bundle") or context.get("project_files"),
+                                impact_report=impact_report,
+                                architecture_decisions=context.get("architecture_decisions"),
+                                symbol_graph=context.get("symbol_graph"),
+                                repository_overview=context.get("repository_analysis"),
+                            )
+                            context["validation_report"] = val_report
+                        except Exception as err:
+                            self.logger.warning("DesignValidator execution non-blocking warning: %s", err)
+
+                    # Check for critical blocking violations
+                    if val_report and val_report.is_critical:
+                        crit_msg = f"Critical Architectural Violation in Task [{task.id}]: {val_report.summary}"
+                        self.logger.error("Aborting code generation for Task [%s] due to critical design violation: %s", task.id, val_report.warnings)
+                        tasks_failed.append(task.id)
+                        last_error = crit_msg
+                        record = self.state_manager.record_task_execution(
+                            task_id=task.id,
+                            success=False,
+                            quality_score=0,
+                            test_summary="Aborted: Critical Architectural Violation",
+                            details={"error": crit_msg, "warnings": val_report.warnings},
+                            auto_save=True,
+                        )
+                        execution_records.append(record)
+                        continue
+
                     # 3. Code Context Retrieval
                     if hasattr(self, "code_context_retriever") and self.code_context_retriever:
                         try:
@@ -519,7 +592,48 @@ class Orchestrator:
                         except Exception as err:
                             self.logger.warning("CodeContextRetriever execution non-blocking warning: %s", err)
 
-                    # 3. CoderAgent.execute()
+                    # 3.4 Autonomous Technical Debt & Refactoring Engine (v1.9)
+                    refact_engine = getattr(self, "refactoring_engine", None) or context.get("refactoring_engine")
+                    if refact_engine and hasattr(refact_engine, "analyze_project"):
+                        try:
+                            self.logger.info("Analyzing Technical Debt with RefactoringEngine for Task [%s]...", task.id)
+                            refact_report = refact_engine.analyze_project(
+                                project_root=self.project_root,
+                                task=task,
+                            )
+                            context["refactoring_report"] = refact_report
+                            context["technical_debt"] = refact_report
+                            if refact_report.should_refactor_first:
+                                self.logger.warning(
+                                    "🚨 Technical Debt Alert: Refactoring recommended before implementing Task [%s] (Debt Score: %.1f/100, Maintainability Index: %.1f/100).",
+                                    task.id,
+                                    refact_report.metrics.technical_debt_score,
+                                    refact_report.metrics.maintainability_index,
+                                )
+                        except Exception as err:
+                            self.logger.warning("RefactoringEngine execution non-blocking warning: %s", err)
+
+                    # 3.5 Autonomous Engineering Decision Engine (v1.8)
+                    eng_decision_engine = getattr(self, "decision_engine", None) or context.get("decision_engine")
+                    if eng_decision_engine and hasattr(eng_decision_engine, "decide"):
+                        try:
+                            self.logger.info("Evaluating Architectural Strategies with EngineeringDecisionEngine for Task [%s]...", task.id)
+                            decision_report = eng_decision_engine.decide(
+                                task=task,
+                                impact_report=impact_report,
+                                code_context=context.get("context_bundle") or context.get("project_files"),
+                                symbol_graph=context.get("symbol_graph"),
+                                repository_overview=context.get("repository_analysis"),
+                                architecture_decisions=context.get("architecture_decisions"),
+                                refactoring_report=context.get("refactoring_report"),
+                            )
+                            context["engineering_decision"] = decision_report
+                            context["decision_report"] = decision_report
+                            self.logger.info("Selected Strategy: '%s' (Confidence: %.2f)", decision_report.selected_option.title, decision_report.telemetry.get("confidence", 0.90))
+                        except Exception as err:
+                            self.logger.warning("EngineeringDecisionEngine execution non-blocking warning: %s", err)
+
+                    # 4. CoderAgent.execute()
                     self.logger.info("Executing CoderAgent for Task [%s]...", task.id)
                     generated_result = self.coder_agent.execute(context=context, task=task)
 
@@ -605,6 +719,21 @@ class Orchestrator:
                         self.state_manager.mark_task_completed(task.id)
                         tasks_completed.append(task.id)
                         self.logger.info("Task [%s] PASSED in %.2fs (Score: %d/100).", task.id, time.time() - task_start, review_result.overall_quality_score)
+
+                        # Automatic promotion of architectural improvements into ArchitectureManager
+                        if hasattr(self, "architecture_manager") and self.architecture_manager and review_result.overall_quality_score >= 85:
+                            try:
+                                for rec in getattr(review_result, "recommendations", []):
+                                    if any(k in rec.lower() for k in ["pattern", "architecture", "refactor", "isolate", "repository"]):
+                                        self.architecture_manager.record_decision(
+                                            title=f"Architectural pattern from Task {task.id}",
+                                            decision=rec,
+                                            context=f"Established during task '{task.title}'.",
+                                            category="ARCHITECTURE",
+                                        )
+                                        break
+                            except Exception:
+                                pass
                     else:
                         tasks_failed.append(task.id)
                         last_error = f"Task [{task.id}] validation failed (Quality: {review_result.overall_quality_score}/100, Regenerate: {review_result.should_regenerate})"

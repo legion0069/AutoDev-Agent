@@ -50,6 +50,7 @@ class MemoryCategory:
     IMPLEMENTATION = "IMPLEMENTATION"
     TESTING = "TESTING"
     OPTIMIZATION = "OPTIMIZATION"
+    REFACTORING = "REFACTORING"
 
     ALL_CATEGORIES: Set[str] = {
         "ARCHITECTURE",
@@ -62,6 +63,7 @@ class MemoryCategory:
         "IMPLEMENTATION",
         "TESTING",
         "OPTIMIZATION",
+        "REFACTORING",
     }
 
     @classmethod
@@ -208,6 +210,7 @@ class MemoryManager:
         self,
         memory_path: Union[str, Path] = DEFAULT_MEMORY_PATH,
         auto_create: bool = True,
+        persistence_path: Optional[Union[str, Path]] = None,
     ) -> None:
         """
         Initializes the MemoryManager.
@@ -215,8 +218,10 @@ class MemoryManager:
         Args:
             memory_path: Path to the JSON persistence file.
             auto_create: Whether to automatically create an empty memory store if missing.
+            persistence_path: Alias for memory_path.
         """
-        self.memory_path = Path(memory_path).resolve()
+        target_path = persistence_path or memory_path
+        self.memory_path = Path(target_path).resolve()
         self.auto_create = auto_create
         self._entries: Dict[str, MemoryEntry] = {}
 
@@ -224,6 +229,11 @@ class MemoryManager:
             self.load_memory()
         elif self.auto_create:
             self._initialize_empty_store()
+
+    @property
+    def persistence_path(self) -> Path:
+        """Alias for memory_path for backward/forward compatibility."""
+        return self.memory_path
 
     # -------------------------------------------------------------------------
     # Core Memory Operations (CRUD)
@@ -511,6 +521,14 @@ class MemoryManager:
         ]
         matches.sort(key=lambda e: (e.importance, e.timestamp), reverse=True)
         return matches[:limit] if limit is not None else matches
+
+    def get_memories_by_category(self, category: str, limit: Optional[int] = None) -> List[MemoryEntry]:
+        """Alias for search_by_category."""
+        return self.search_by_category(category=category, limit=limit)
+
+    def get_by_category(self, category: str, limit: Optional[int] = None) -> List[MemoryEntry]:
+        """Alias for search_by_category."""
+        return self.search_by_category(category=category, limit=limit)
 
     def get_recent(self, limit: int = 10) -> List[MemoryEntry]:
         """

@@ -85,11 +85,24 @@ class Reference:
 @dataclass
 class Dependency:
     """Represents an inter-file dependency relationship."""
-    source_file: str
-    target_file: str
+    source_file: str = ""
+    target_file: str = ""
     imported_symbols: List[str] = field(default_factory=list)
     raw_import_statement: str = ""
     line: int = 1
+    source: str = ""
+    target: str = ""
+    dependency_type: str = "import"
+
+    def __post_init__(self) -> None:
+        if not self.source_file and self.source:
+            self.source_file = self.source
+        if not self.target_file and self.target:
+            self.target_file = self.target
+        if not self.source and self.source_file:
+            self.source = self.source_file
+        if not self.target and self.target_file:
+            self.target = self.target_file
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -97,11 +110,14 @@ class Dependency:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> Dependency:
         return cls(
-            source_file=data.get("source_file", ""),
-            target_file=data.get("target_file", ""),
+            source_file=data.get("source_file", data.get("source", "")),
+            target_file=data.get("target_file", data.get("target", "")),
             imported_symbols=list(data.get("imported_symbols", [])),
             raw_import_statement=data.get("raw_import_statement", ""),
             line=int(data.get("line", 1)),
+            source=data.get("source", data.get("source_file", "")),
+            target=data.get("target", data.get("target_file", "")),
+            dependency_type=data.get("dependency_type", "import"),
         )
 
 
@@ -110,14 +126,14 @@ class Symbol:
     """
     Represents a code symbol (class, function, method, interface, enum, etc.).
     """
-    id: str
-    name: str
-    qualified_name: str
-    symbol_type: str
-    language: str
-    file: str
-    line: int
-    end_line: int
+    id: str = ""
+    name: str = ""
+    qualified_name: str = ""
+    symbol_type: str = SymbolType.FUNCTION
+    language: str = "python"
+    file: str = ""
+    line: int = 1
+    end_line: int = 1
     parent_symbol: Optional[str] = None
     visibility: str = Visibility.PUBLIC
     docstring: Optional[str] = None
@@ -130,6 +146,28 @@ class Symbol:
     references: List[str] = field(default_factory=list)
     decorators: List[str] = field(default_factory=list)
     hash: str = ""
+    dependencies: List[Dependency] = field(default_factory=list)
+    file_path: str = ""
+    line_start: int = 1
+    line_end: int = 1
+
+    def __post_init__(self) -> None:
+        if not self.file and self.file_path:
+            self.file = self.file_path
+        elif not self.file_path and self.file:
+            self.file_path = self.file
+        if self.line_start != 1 and self.line == 1:
+            self.line = self.line_start
+        elif self.line != 1 and self.line_start == 1:
+            self.line_start = self.line
+        if self.line_end != 1 and self.end_line == 1:
+            self.end_line = self.line_end
+        elif self.end_line != 1 and self.line_end == 1:
+            self.line_end = self.end_line
+        if not self.qualified_name and self.name:
+            self.qualified_name = self.name
+        if not self.id:
+            self.id = f"{self.file}::{self.qualified_name or self.name}"
 
     def to_dict(self) -> Dict[str, Any]:
         """Converts Symbol to dictionary representation."""
@@ -154,6 +192,8 @@ class Symbol:
             "references": list(self.references),
             "decorators": list(self.decorators),
             "hash": self.hash,
+            "file_path": self.file_path or self.file,
+            "line_start": self.line_start,
         }
 
     @classmethod
@@ -165,8 +205,8 @@ class Symbol:
             qualified_name=data.get("qualified_name", data.get("name", "")),
             symbol_type=data.get("symbol_type", SymbolType.FUNCTION),
             language=data.get("language", "python"),
-            file=data.get("file", ""),
-            line=int(data.get("line", 1)),
+            file=data.get("file", data.get("file_path", "")),
+            line=int(data.get("line", data.get("line_start", 1))),
             end_line=int(data.get("end_line", data.get("line", 1))),
             parent_symbol=data.get("parent_symbol"),
             visibility=data.get("visibility", Visibility.PUBLIC),
@@ -180,6 +220,8 @@ class Symbol:
             references=list(data.get("references", [])),
             decorators=list(data.get("decorators", [])),
             hash=data.get("hash", ""),
+            file_path=data.get("file_path", data.get("file", "")),
+            line_start=int(data.get("line_start", data.get("line", 1))),
         )
 
 

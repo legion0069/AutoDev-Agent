@@ -1,7 +1,7 @@
 {
-  "project_name": "autodev_repo_test_xd8qczwt",
-  "project_root": "C:\\Users\\veruk\\AppData\\Local\\Temp\\autodev_repo_test_xd8qczwt",
-  "timestamp": "2026-10-06T18:11:56.341888+00:00",
+  "project_name": "autodev_repo_test_p8u4a847",
+  "project_root": "C:\\Users\\veruk\\AppData\\Local\\Temp\\autodev_repo_test_p8u4a847",
+  "timestamp": "2026-10-06T19:32:55.893480+00:00",
   "total_modules": 7,
   "total_classes": 3,
   "total_interfaces": 0,
@@ -372,5 +372,5 @@
     }
   ],
   "circular_dependencies": [],
-  "summary": "Repository 'autodev_repo_test_xd8qczwt' consists of 7 modules, 3 classes, and 3 functions. Primary architecture detected: Modular Monolith. Static topology reveals no circular dependencies and 2 potential architectural hotspots."
+  "summary": "Repository 'autodev_repo_test_p8u4a847' consists of 7 modules, 3 classes, and 3 functions. Primary architecture detected: Modular Monolith. Static topology reveals no circular dependencies and 2 potential architectural hotspots."
 }
