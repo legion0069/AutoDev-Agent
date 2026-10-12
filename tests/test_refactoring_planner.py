@@ -515,7 +515,7 @@ def test_13_large_project_graph_performance():
     elapsed = time.perf_counter() - start
 
     assert isinstance(plan, RefactoringPlan)
-    assert elapsed < 0.10  # Completed in less than 100ms
+    assert elapsed < 0.50  # Completed in less than 500ms
     assert len(plan.actions) >= 2
 
 

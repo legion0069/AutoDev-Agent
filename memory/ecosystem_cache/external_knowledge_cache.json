@@ -1,0 +1,46 @@
+[
+  {
+    "entry_id": "EXT-FRAMEWORK-fastapi",
+    "key": "fastapi",
+    "category": "FRAMEWORK",
+    "title": "FastAPI Web Framework",
+    "content": "FastAPI modern async framework with Pydantic v2 validation and OpenAPI generation.",
+    "version": "0.115.0",
+    "metadata": {},
+    "created_at": 1791569363.3117194,
+    "updated_at": 1791569363.3117194
+  },
+  {
+    "entry_id": "EXT-FRAMEWORK-react",
+    "key": "react",
+    "category": "FRAMEWORK",
+    "title": "React UI Framework",
+    "content": "React 18/19 declarative frontend library with concurrent mode and actions.",
+    "version": "18.3.1",
+    "metadata": {},
+    "created_at": 1791569363.3127637,
+    "updated_at": 1791569363.3127637
+  },
+  {
+    "entry_id": "EXT-FRAMEWORK-spring_boot",
+    "key": "spring_boot",
+    "category": "FRAMEWORK",
+    "title": "Spring Boot Enterprise Framework",
+    "content": "Spring Boot 3.3 Java enterprise framework with Jakarta EE and native AOT compilation.",
+    "version": "3.3.0",
+    "metadata": {},
+    "created_at": 1791569363.3132942,
+    "updated_at": 1791569363.3132942
+  },
+  {
+    "entry_id": "EXT-SECURITY_ADVISORY-cve_2024_21503",
+    "key": "cve_2024_21503",
+    "category": "SECURITY_ADVISORY",
+    "title": "PyCrypto Critical Vulnerability Advisory",
+    "content": "PyCrypto unmaintained buffer overflow vulnerability CVE-2024-21503. Migrate to cryptography.",
+    "version": "2.6.1",
+    "metadata": {},
+    "created_at": 1791569363.3143764,
+    "updated_at": 1791569363.3143764
+  }
+]

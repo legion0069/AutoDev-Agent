@@ -1,0 +1,62 @@
+{
+  "complexity_analyzer": {
+    "functions_count": 1000,
+    "loc_count": 15550,
+    "duration_sec": 0.149,
+    "funcs_per_sec": 6712.0,
+    "loc_per_sec": 104372.2
+  },
+  "dependency_health": {
+    "modules_count": 50,
+    "duration_sec": 0.1145,
+    "cycles_found": 1,
+    "instability": 0.5
+  },
+  "duplication_detector": {
+    "files_scanned": 50,
+    "duration_sec": 0.551,
+    "duplicate_blocks": 146
+  },
+  "caching_performance": {
+    "modules_count": 100,
+    "functions_count": 2000,
+    "cold_duration_sec": 3.5105,
+    "warm_duration_sec": 0.5997,
+    "speedup_factor": 5.85,
+    "latency_reduction_pct": 82.9
+  },
+  "scalability_ladder": [
+    {
+      "modules": 10,
+      "functions": 150,
+      "sloc": 2030,
+      "duration_sec": 0.1327,
+      "gate_status": "REJECTED",
+      "maintainability_index": 21.2
+    },
+    {
+      "modules": 50,
+      "functions": 750,
+      "sloc": 10150,
+      "duration_sec": 0.8894,
+      "gate_status": "REJECTED",
+      "maintainability_index": 21.2
+    },
+    {
+      "modules": 100,
+      "functions": 1500,
+      "sloc": 20300,
+      "duration_sec": 2.4613,
+      "gate_status": "REJECTED",
+      "maintainability_index": 21.2
+    },
+    {
+      "modules": 200,
+      "functions": 3000,
+      "sloc": 40600,
+      "duration_sec": 6.8264,
+      "gate_status": "REJECTED",
+      "maintainability_index": 21.1
+    }
+  ]
+}

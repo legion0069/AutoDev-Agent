@@ -1,0 +1,39 @@
+{
+  "executive_decision_rate": 9614.384313689534,
+  "product_breakdown_rate": 90295.88380504047,
+  "architecture_eval_rate": 23057.72534489251,
+  "financial_tx_rate": 267570.6676023093,
+  "support_ticket_rate": 299790.1478114189,
+  "brain_indexing_rate": 60062.49254165931,
+  "brain_search_rate": 293.2494656835248,
+  "simulation_metrics": [
+    {
+      "years": 1,
+      "quarters": 4,
+      "duration_s": 0.006715297698974609,
+      "quarters_per_sec": 595.654903074629,
+      "spending_usd": 123000.0
+    },
+    {
+      "years": 2,
+      "quarters": 8,
+      "duration_s": 0.024914979934692383,
+      "quarters_per_sec": 321.0919704117664,
+      "spending_usd": 246000.0
+    },
+    {
+      "years": 5,
+      "quarters": 20,
+      "duration_s": 0.057878971099853516,
+      "quarters_per_sec": 345.5486443512576,
+      "spending_usd": 615000.0
+    },
+    {
+      "years": 10,
+      "quarters": 40,
+      "duration_s": 0.13533711433410645,
+      "quarters_per_sec": 295.55824502990424,
+      "spending_usd": 1230000.0
+    }
+  ]
+}

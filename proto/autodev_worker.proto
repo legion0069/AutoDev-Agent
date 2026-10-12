@@ -1,0 +1,134 @@
+syntax = "proto3";
+
+package autodev.v2_3;
+
+// Worker Coordination Service
+service WorkerCoordinatorService {
+  // Registers a remote worker with the coordinator
+  rpc RegisterWorker (RegisterWorkerRequest) returns (RegisterWorkerResponse);
+
+  // Unregisters a worker upon shutdown
+  rpc UnregisterWorker (UnregisterWorkerRequest) returns (UnregisterWorkerResponse);
+
+  // Periodic liveness and load heartbeat
+  rpc SendHeartbeat (HeartbeatRequest) returns (HeartbeatResponse);
+
+  // Worker requests task assignment
+  rpc PollTask (PollTaskRequest) returns (TaskAssignment);
+
+  // Worker reports real-time execution progress
+  rpc ReportProgress (ProgressReport) returns (ProgressAck);
+
+  // Worker submits final task execution results and artifact manifests
+  rpc SubmitResult (TaskResult) returns (SubmitResultResponse);
+}
+
+message WorkerCapabilitiesProto {
+  repeated string supported_runtimes = 1;
+  repeated string supported_operation_types = 2;
+  int32 max_concurrency = 3;
+  bool has_container_support = 4;
+  string container_engine = 5;
+  repeated string tags = 6;
+}
+
+message RegisterWorkerRequest {
+  string worker_id = 1;
+  string worker_name = 2;
+  string protocol_version = 3;
+  WorkerCapabilitiesProto capabilities = 4;
+  string hostname = 5;
+  string auth_token = 6;
+  string client_cert_fingerprint = 7;
+}
+
+message RegisterWorkerResponse {
+  bool accepted = 1;
+  string worker_id = 2;
+  string coordinator_version = 3;
+  float heartbeat_interval_seconds = 4;
+  float lease_ttl_seconds = 5;
+  string message = 6;
+}
+
+message UnregisterWorkerRequest {
+  string worker_id = 1;
+  string reason = 2;
+}
+
+message UnregisterWorkerResponse {
+  bool acknowledged = 1;
+}
+
+message HeartbeatRequest {
+  string worker_id = 1;
+  string status = 2;
+  int32 current_load = 3;
+  repeated string active_task_ids = 4;
+  string timestamp = 5;
+}
+
+message HeartbeatResponse {
+  bool acknowledged = 1;
+  bool should_drain = 2;
+}
+
+message PollTaskRequest {
+  string worker_id = 1;
+}
+
+message TaskAssignment {
+  string task_id = 1;
+  string operation_id = 2;
+  string transaction_id = 3;
+  string operation_type = 4;
+  string target_file = 5;
+  string target_content = 6;
+  string lease_token = 7;
+  string deadline_utc = 8;
+  string idempotency_key = 9;
+  string required_runtime = 10;
+  string security_profile = 11;
+  map<string, string> metadata = 12;
+}
+
+message ProgressReport {
+  string task_id = 1;
+  string worker_id = 2;
+  float percent_complete = 3;
+  string message = 4;
+}
+
+message ProgressAck {
+  bool acknowledged = 1;
+  bool cancel_requested = 2;
+}
+
+message ArtifactDescriptorProto {
+  string artifact_id = 1;
+  string relative_path = 2;
+  string sha256 = 3;
+  int64 size_bytes = 4;
+  string artifact_type = 5;
+}
+
+message TaskResult {
+  string task_id = 1;
+  string operation_id = 2;
+  string transaction_id = 3;
+  string worker_id = 4;
+  string lease_token = 5;
+  bool success = 6;
+  repeated string modified_files = 7;
+  repeated string created_files = 8;
+  repeated string deleted_files = 9;
+  repeated ArtifactDescriptorProto artifacts = 10;
+  float duration_seconds = 11;
+  string error_type = 12;
+  string error_message = 13;
+}
+
+message SubmitResultResponse {
+  bool accepted = 1;
+  string message = 2;
+}

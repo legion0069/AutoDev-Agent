@@ -1,0 +1,31 @@
+{
+  "version": "2.8.0",
+  "max_parallel_agents": 8,
+  "consensus_strategy": "weighted",
+  "workload_balancing": true,
+  "communication_timeout": 15.0,
+  "retry_policy": {
+    "max_retries": 3,
+    "backoff_factor": 1.5,
+    "retryable_statuses": ["TIMEOUT", "COMMUNICATION_ERROR", "DEADLOCK_DETECTED"]
+  },
+  "review_depth": "deep",
+  "imbalance_threshold_hours": 3.0,
+  "auto_resolve_conflicts": true,
+  "sync_checkpoints": {
+    "pre_merge": ["dependencies", "tests", "security"],
+    "pre_release": ["tests", "security", "documentation", "versioning"],
+    "post_architecture": ["interface_compatibility", "dependency_graph"],
+    "pre_deployment": ["smoke_tests", "security_scan", "config_validation"]
+  },
+  "agent_roles": [
+    "ArchitectureAgent",
+    "BackendAgent",
+    "FrontendAgent",
+    "TestingAgent",
+    "SecurityAgent",
+    "PerformanceAgent",
+    "DocumentationAgent",
+    "ReleaseAgent"
+  ]
+}

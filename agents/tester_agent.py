@@ -301,6 +301,53 @@ class TesterAgent:
             message=message,
         )
 
+    def to_test_suite_result(self, result: TestResult, run_id: str = "") -> Any:
+        """Converts legacy TestResult to normalized v2.6 TestSuiteResult."""
+        from core.test_result_models import TestRunnerType, TestSuiteResult, TestStatus, SingleTestResult
+        import uuid
+        
+        status = TestStatus.PASSED if result.success else TestStatus.FAILED
+        single_tests = [
+            SingleTestResult(
+                test_id="legacy_run",
+                test_name="legacy_suite",
+                status=status,
+                message=result.message,
+                stdout_bounded=result.stdout,
+                stderr_bounded=result.stderr,
+            )
+        ]
+        return TestSuiteResult(
+            run_id=run_id or f"run_{uuid.uuid4().hex[:6]}",
+            test_runner=TestRunnerType.PYTEST,
+            total_count=result.total_tests,
+            passed_count=result.passed,
+            failed_count=result.failed,
+            skipped_count=result.skipped,
+            duration_ms=result.duration * 1000.0,
+            exit_code=result.exit_code,
+            success=result.success,
+            tests=single_tests,
+            raw_stdout=result.stdout,
+            raw_stderr=result.stderr,
+        )
+
+    def heal_failure(
+        self,
+        workspace_path: Union[str, Path],
+        failing_test_id: Optional[str] = None,
+        policy: Optional[Any] = None,
+        llm_client: Optional[Any] = None,
+    ) -> Any:
+        """Invokes AutoDev v2.6 SelfHealingOrchestrator to diagnose and repair test failures."""
+        from core.self_healing_orchestrator import SelfHealingOrchestrator
+        orchestrator = SelfHealingOrchestrator(
+            workspace_path=str(workspace_path),
+            policy=policy,
+            llm_client=llm_client,
+        )
+        return orchestrator.run_self_healing_workflow(failing_test_id=failing_test_id)
+
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)-5s] %(message)s")

@@ -1,0 +1,158 @@
+{
+  "company_name": "AutoDev Autonomous Technologies Inc.",
+  "company_version": "3.0.0",
+  "vision": "Autonomous AI Software Company executing full-lifecycle enterprise engineering from CEO vision to production support.",
+  "executives": [
+    {
+      "role": "CEO",
+      "name": "Elena Rostova",
+      "title": "Chief Executive Officer",
+      "department": "EXECUTIVE",
+      "budget_authority_usd": 5000000.0,
+      "risk_tolerance": 0.70
+    },
+    {
+      "role": "CTO",
+      "name": "Marcus Vance",
+      "title": "Chief Technology Officer",
+      "department": "ARCHITECTURE",
+      "budget_authority_usd": 2000000.0,
+      "risk_tolerance": 0.60
+    },
+    {
+      "role": "VP_PRODUCT",
+      "name": "Sarah Chen",
+      "title": "VP of Product Management",
+      "department": "PRODUCT",
+      "budget_authority_usd": 1000000.0,
+      "risk_tolerance": 0.65
+    },
+    {
+      "role": "VP_ENGINEERING",
+      "name": "David Kim",
+      "title": "VP of Engineering",
+      "department": "ENGINEERING",
+      "budget_authority_usd": 1500000.0,
+      "risk_tolerance": 0.50
+    },
+    {
+      "role": "DIRECTOR_ENGINEERING",
+      "name": "Alex Rivera",
+      "title": "Director of Engineering",
+      "department": "ENGINEERING",
+      "budget_authority_usd": 500000.0,
+      "risk_tolerance": 0.50
+    },
+    {
+      "role": "DIRECTOR_QA",
+      "name": "Priya Sharma",
+      "title": "Director of Quality Assurance",
+      "department": "QA",
+      "budget_authority_usd": 300000.0,
+      "risk_tolerance": 0.20
+    },
+    {
+      "role": "DIRECTOR_SECURITY",
+      "name": "Viktor Stone",
+      "title": "Director of Information Security",
+      "department": "SECURITY",
+      "budget_authority_usd": 500000.0,
+      "risk_tolerance": 0.10
+    },
+    {
+      "role": "DIRECTOR_PLATFORM",
+      "name": "Liam O'Connor",
+      "title": "Director of Platform Engineering",
+      "department": "ENGINEERING",
+      "budget_authority_usd": 400000.0,
+      "risk_tolerance": 0.40
+    },
+    {
+      "role": "DIRECTOR_DEVOPS",
+      "name": "Rachel Green",
+      "title": "Director of DevOps & SRE",
+      "department": "DEVOPS",
+      "budget_authority_usd": 500000.0,
+      "risk_tolerance": 0.30
+    },
+    {
+      "role": "DIRECTOR_DOCUMENTATION",
+      "name": "Arthur Pendelton",
+      "title": "Director of Technical Documentation",
+      "department": "DOCUMENTATION",
+      "budget_authority_usd": 150000.0,
+      "risk_tolerance": 0.60
+    },
+    {
+      "role": "DIRECTOR_CUSTOMER_SUCCESS",
+      "name": "Maya Lin",
+      "title": "Director of Customer Success",
+      "department": "CUSTOMER_SUPPORT",
+      "budget_authority_usd": 300000.0,
+      "risk_tolerance": 0.50
+    },
+    {
+      "role": "DIRECTOR_ANALYTICS",
+      "name": "Dr. Jonathan Hayes",
+      "title": "Director of Business Analytics",
+      "department": "ANALYTICS",
+      "budget_authority_usd": 250000.0,
+      "risk_tolerance": 0.70
+    },
+    {
+      "role": "DIRECTOR_FINANCE",
+      "name": "Hannah Abbott",
+      "title": "Director of Finance",
+      "department": "FINANCE",
+      "budget_authority_usd": 3000000.0,
+      "risk_tolerance": 0.20
+    },
+    {
+      "role": "DIRECTOR_HR",
+      "name": "Carlos Mendez",
+      "title": "Director of Human Resources",
+      "department": "HR",
+      "budget_authority_usd": 400000.0,
+      "risk_tolerance": 0.40
+    },
+    {
+      "role": "LEGAL_COUNSEL",
+      "name": "Evelyn Cross",
+      "title": "General Legal Counsel",
+      "department": "LEGAL",
+      "budget_authority_usd": 500000.0,
+      "risk_tolerance": 0.10
+    }
+  ],
+  "engineering_teams": [
+    { "team": "BACKEND", "lead": "Liam O'Connor", "capacity_points": 50 },
+    { "team": "FRONTEND", "lead": "Aria Stark", "capacity_points": 45 },
+    { "team": "MOBILE", "lead": "Carlos Santana", "capacity_points": 35 },
+    { "team": "AI_ML", "lead": "Dr. Alan Turing", "capacity_points": 40 },
+    { "team": "INFRASTRUCTURE", "lead": "Rachel Green", "capacity_points": 40 },
+    { "team": "DATABASE", "lead": "Siddharth Rao", "capacity_points": 35 },
+    { "team": "QA_AUTOMATION", "lead": "Priya Sharma", "capacity_points": 40 },
+    { "team": "PLATFORM", "lead": "David Kim", "capacity_points": 45 }
+  ],
+  "governance": {
+    "compliance_standards": ["SOC2_TYPE_II", "GDPR", "ISO_27001"],
+    "protected_branches": ["main", "master", "release/*", "production"],
+    "minimum_approvals": 2,
+    "immutable_audit_logging": true,
+    "audit_hash_algorithm": "SHA-256"
+  },
+  "dora_targets": {
+    "deployment_frequency_per_day": 4.0,
+    "lead_time_for_changes_hours": 3.0,
+    "mean_time_to_recovery_minutes": 15.0,
+    "change_failure_rate_pct": 3.0
+  },
+  "release_gates": {
+    "unit_tests_pass": true,
+    "integration_tests_pass": true,
+    "security_scan_clean": true,
+    "performance_sla_met": true,
+    "docs_updated": true,
+    "executive_signoff": true
+  }
+}

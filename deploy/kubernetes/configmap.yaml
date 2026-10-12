@@ -1,0 +1,39 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: autodev-config
+  namespace: autodev-system
+  labels:
+    app.kubernetes.io/name: autodev
+    app.kubernetes.io/component: config
+data:
+  config.json: |
+    {
+      "coordination_mode": "ha",
+      "consensus": {
+        "heartbeat_interval_ms": 1000,
+        "election_timeout_ms": 3000,
+        "lease_ttl_ms": 5000
+      },
+      "kubernetes": {
+        "namespace": "autodev-system",
+        "reconciliation_interval_seconds": 10,
+        "default_worker_image": "autodev/worker:v2.4.0",
+        "global_max_workers": 50
+      },
+      "artifact_sync": {
+        "chunk_algorithm": "fastcdc",
+        "min_chunk_size_bytes": 4096,
+        "target_chunk_size_bytes": 16384,
+        "max_chunk_size_bytes": 65536,
+        "storage_quota_bytes": 10737418240,
+        "gc_interval_seconds": 3600
+      },
+      "terminal": {
+        "enabled": true,
+        "max_concurrent_sessions": 10,
+        "session_idle_timeout_seconds": 600,
+        "session_max_lifetime_seconds": 3600,
+        "allow_coordinator_host_execution": false
+      }
+    }

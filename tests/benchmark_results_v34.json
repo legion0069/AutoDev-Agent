@@ -1,0 +1,19 @@
+{
+  "communication_bus_throughput_msg_per_sec": 1797.48,
+  "communication_bus_latency_ms_per_msg": 0.5563,
+  "decision_engine_rate_decisions_per_sec": 17147.39,
+  "decision_engine_latency_ms": 0.0583,
+  "conflict_resolution_rate_conflicts_per_sec": 116469.62,
+  "conflict_resolution_latency_ms": 0.0086,
+  "meeting_manager_rate_meetings_per_sec": 30079.2,
+  "meeting_manager_latency_ms": 0.0332,
+  "audit_event_write_rate_per_sec": 243409.11,
+  "audit_chain_verification_time_ms": 16.65,
+  "audit_chain_integrity_valid": true,
+  "metrics_dashboard_rate_calc_per_sec": 10956.71,
+  "metrics_dashboard_latency_ms": 0.0913,
+  "full_simulation_cycle_rate_per_sec": 3033.9,
+  "average_full_cycle_latency_ms": 0.33,
+  "total_departments_active": 17,
+  "total_specialized_agents": 17
+}

@@ -57,6 +57,15 @@ from core.engineering_decision_engine import (
     EngineeringDecision,
     EngineeringDecisionEngine,
 )
+from core.change_execution_planner import (
+    ChangeExecutionPlan,
+    ChangeExecutionPlanner,
+    ChangeOperation,
+    CommitPlanEntry,
+    ExecutionStage,
+    RollbackPoint,
+    ValidationGate,
+)
 from core.change_planner import ChangePlan, ChangePlanner
 from core.code_context_retriever import CodeContextRetriever
 from core.context_builder import ContextBuilder
@@ -75,8 +84,48 @@ from core.refactoring_engine import (
     RefactoringReport as TechnicalDebtReport,
     TechnicalDebtIssue,
 )
+from core.quality_models import QualityAssessmentResult, QualityGateStatus
+from core.predictive_quality_engine import PredictiveQualityEngine
 from core.retry_engine import RetryEngine, RetryResult
 from core.state_manager import ExecutionRecord, ProjectState, StateManager
+from core.collaboration import (
+    CollaborationManager,
+    CollaborationConfig,
+    TaskAssignment,
+    TaskPriority,
+    SyncCheckpointType,
+)
+from agents import (
+    ArchitectureAgent,
+    BackendAgent,
+    FrontendAgent,
+    TestingAgent,
+    SecurityAgent,
+    PerformanceAgent,
+    DocumentationAgent,
+    ReleaseAgent,
+)
+from core.cluster import (
+    ClusterConfig,
+    ClusterJob,
+    ClusterManager,
+    TaskSpec,
+)
+from core.enterprise import (
+    EnterpriseCompany,
+)
+from core.learning import (
+    SelfEvolvingEngine,
+)
+from core.ecosystem import (
+    ExternalIntelligenceEngine,
+    EcosystemEngine,
+)
+from core.multi_agent import (
+    DistributedEngineeringCompany,
+    WorkItem,
+    WorkItemStatus,
+)
 
 # Configure module logger
 logger = logging.getLogger("AutoDev.Orchestrator")
@@ -213,6 +262,7 @@ class Orchestrator:
     def __init__(
         self,
         project_root: Optional[Union[str, Path]] = None,
+        project_dir: Optional[Union[str, Path]] = None,
         plan_path: Union[str, Path] = "memory/project_plan.json",
         state_path: Union[str, Path] = "memory/state.json",
         tasks_path: Union[str, Path] = "memory/tasks.json",
@@ -234,19 +284,42 @@ class Orchestrator:
         design_validator: Optional[DesignValidator] = None,
         decision_engine: Optional[EngineeringDecisionEngine] = None,
         refactoring_engine: Optional[RefactoringEngine] = None,
+        change_execution_planner: Optional[ChangeExecutionPlanner] = None,
+        execution_engine: Optional[Any] = None,
         code_context_retriever: Optional[CodeContextRetriever] = None,
         requirement_planner: Optional[RequirementPlanner] = None,
         requirement: Optional[str] = None,
         llm: Optional[BaseLLM] = None,
+        coordination_mode: str = "single",
+        ha_coordinator: Optional[Any] = None,
+        artifact_transfer_manager: Optional[Any] = None,
+        kubernetes_controller: Optional[Any] = None,
+        terminal_gateway: Optional[Any] = None,
+        predictive_quality_engine: Optional[PredictiveQualityEngine] = None,
+        collaboration_manager: Optional[CollaborationManager] = None,
+        cluster_manager: Optional[ClusterManager] = None,
+        enterprise_company: Optional[EnterpriseCompany] = None,
+        evolving_engine: Optional[SelfEvolvingEngine] = None,
+        ecosystem_engine: Optional[ExternalIntelligenceEngine] = None,
+        multi_agent_company: Optional[DistributedEngineeringCompany] = None,
+        enterprise_organization: Optional[Any] = None,
+        enterprise_federation: Optional[Any] = None,
+        research_lab: Optional[Any] = None,
     ) -> None:
         """
-        Initializes Orchestrator Version 3 with injectable subsystems.
+        Initializes Orchestrator Version 3 with injectable subsystems (v2.0 - v3.0).
         """
-        self.project_root = Path(project_root).resolve() if project_root else Path.cwd()
+        chosen_root = project_dir or project_root
+        self.project_root = Path(chosen_root).resolve() if chosen_root else Path.cwd()
         self.plan_path = Path(plan_path).resolve()
         self.state_path = Path(state_path).resolve()
         self.tasks_path = Path(tasks_path).resolve()
         self.logger = setup_logger(log_dir=log_dir)
+        self.coordination_mode = coordination_mode
+        self.ha_coordinator = ha_coordinator
+        self.artifact_transfer_manager = artifact_transfer_manager
+        self.kubernetes_controller = kubernetes_controller
+        self.terminal_gateway = terminal_gateway
         self.llm = llm
         self.requirement = requirement
         self.requirement_planner = requirement_planner
@@ -292,9 +365,139 @@ class Orchestrator:
         self.design_validator = design_validator or (DesignValidator(architecture_manager=self.architecture_manager) if self.architecture_manager else None)
         self.decision_engine = decision_engine
         self.refactoring_engine = refactoring_engine
+        self.change_execution_planner = change_execution_planner
         self.code_context_retriever = code_context_retriever
+        self.predictive_quality_engine = predictive_quality_engine or PredictiveQualityEngine(workspace_path=str(self.project_root))
 
+        # AutoDev v2.1 Execution Engine
+        if execution_engine is not None:
+            self.execution_engine = execution_engine
+        else:
+            try:
+                from core.execution_engine import ExecutionEngine
+                self.execution_engine = ExecutionEngine(
+                    workspace_root=self.project_root,
+                    file_writer=self.file_writer,
+                    tester_agent=self.tester_agent,
+                    reviewer_agent=self.reviewer_agent,
+                    git_agent=self.git_agent,
+                    retry_engine=self.retry_engine,
+                    architecture_manager=self.architecture_manager,
+                    journal_root=self.project_root / "memory" / "execution_journal",
+                    report_dir=self.project_root / "memory" / "execution_reports",
+                )
+            except Exception:
+                self.execution_engine = None
 
+        # AutoDev v2.8 Multi-Agent Collaboration Framework
+        if collaboration_manager is not None:
+            self.collaboration_manager = collaboration_manager
+        else:
+            self.collaboration_manager = CollaborationManager()
+            # Register specialized engineering agents
+            self.collaboration_manager.register_agent(ArchitectureAgent(llm_client=self.llm))
+            self.collaboration_manager.register_agent(BackendAgent(llm_client=self.llm))
+            self.collaboration_manager.register_agent(FrontendAgent(llm_client=self.llm))
+            self.collaboration_manager.register_agent(TestingAgent(llm_client=self.llm))
+            self.collaboration_manager.register_agent(SecurityAgent(llm_client=self.llm))
+            self.collaboration_manager.register_agent(PerformanceAgent(llm_client=self.llm))
+            self.collaboration_manager.register_agent(DocumentationAgent(llm_client=self.llm))
+            self.collaboration_manager.register_agent(ReleaseAgent(llm_client=self.llm))
+
+        # AutoDev v2.9 Distributed Cluster Execution Engine
+        if cluster_manager is not None:
+            self.cluster_manager = cluster_manager
+        else:
+            self.cluster_manager = ClusterManager(
+                storage_dir=str(self.project_root / "memory" / "cluster")
+            )
+
+        # AutoDev v3.0 Autonomous AI Software Company Framework
+        if enterprise_company is not None:
+            self.enterprise_company = enterprise_company
+        else:
+            self.enterprise_company = EnterpriseCompany()
+
+        # AutoDev v3.1 Self-Evolving Intelligence Engine
+        if evolving_engine is not None:
+            self.evolving_engine = evolving_engine
+        else:
+            self.evolving_engine = SelfEvolvingEngine(
+                storage_dir=str(self.project_root / "memory" / "learning"),
+                project_root=str(self.project_root),
+                llm=self.llm,
+            )
+
+        # AutoDev v3.2 External Intelligence & Ecosystem Awareness Engine
+        if ecosystem_engine is not None:
+            self.ecosystem_engine = ecosystem_engine
+        else:
+            self.ecosystem_engine = ExternalIntelligenceEngine(
+                cache_dir=str(self.project_root / "memory" / "ecosystem_cache")
+            )
+
+        # AutoDev v3.3 Distributed Multi-Agent Collaboration Platform
+        self._multi_agent_company = multi_agent_company
+
+        # AutoDev v3.4 Autonomous AI Organization Framework
+        self._enterprise_organization = enterprise_organization
+
+        # AutoDev v3.5 Autonomous Enterprise Ecosystem Federation
+        self._enterprise_federation = enterprise_federation
+
+        # AutoDev v3.6 Autonomous AI Research Lab & Scientific Discovery Framework
+        self._research_lab = research_lab
+
+    @property
+    def project_dir(self) -> Path:
+        """Alias for project_root."""
+        return self.project_root
+
+    @property
+    def learning_coordinator(self) -> SelfEvolvingEngine:
+        """Alias for evolving_engine."""
+        return self.evolving_engine
+
+    @property
+    def external_intelligence(self) -> ExternalIntelligenceEngine:
+        """Alias for ecosystem_engine."""
+        return self.ecosystem_engine
+
+    @property
+    def multi_agent_company(self) -> DistributedEngineeringCompany:
+        """Distributed multi-agent engineering company simulation engine (v3.3)."""
+        if self._multi_agent_company is None:
+            self._multi_agent_company = DistributedEngineeringCompany()
+        return self._multi_agent_company
+
+    @property
+    def enterprise_organization(self) -> Any:
+        """Autonomous AI Organization multi-department enterprise engine (v3.4)."""
+        if self._enterprise_organization is None:
+            from core.organization import EnterpriseOrganization
+            self._enterprise_organization = EnterpriseOrganization(
+                company_name="AutoDev Autonomous Technologies Inc.",
+                storage_dir=self.project_root / "memory" / "organization",
+            )
+        return self._enterprise_organization
+
+    @property
+    def enterprise_federation(self) -> Any:
+        """Autonomous Enterprise Ecosystem Federation of AI Companies (v3.5)."""
+        if self._enterprise_federation is None:
+            from core.enterprise_federation import EnterpriseFederation
+            self._enterprise_federation = EnterpriseFederation(
+                enterprise_name="AutoDev Global Enterprise Group",
+            )
+        return self._enterprise_federation
+
+    @property
+    def research_lab(self) -> Any:
+        """Autonomous AI Research Lab and Scientific Discovery Framework (v3.6)."""
+        if self._research_lab is None:
+            from core.research_lab import ResearchLab
+            self._research_lab = ResearchLab()
+        return self._research_lab
 
     # -------------------------------------------------------------------------
     # Helper Steps
@@ -427,6 +630,22 @@ class Orchestrator:
                     context["repository_analysis"] = repo_analysis
                 except Exception as err:
                     self.logger.warning("RepositoryAnalyzer fallback warning: %s", err)
+
+            # Ecosystem Awareness & Intelligence Analysis (v3.2)
+            if hasattr(self, "ecosystem_engine") and self.ecosystem_engine:
+                try:
+                    self.logger.info("Executing Ecosystem Intelligence Analysis (v3.2)...")
+                    ecosystem_analysis = self.ecosystem_engine.analyze_ecosystem(
+                        project_dir=str(self.project_root),
+                        source_files=context.get("project_files"),
+                        project_type="web_api",
+                        primary_runtime="Python",
+                        runtime_version="3.12",
+                    )
+                    context["ecosystem_intelligence"] = ecosystem_analysis
+                    context["ecosystem_analysis"] = ecosystem_analysis
+                except Exception as err:
+                    self.logger.warning("EcosystemEngine execution non-blocking warning: %s", err)
 
             # 4. Generate task list
             self.logger.info("Generating today's atomic tasks with TaskPlannerAgent...")
@@ -633,6 +852,58 @@ class Orchestrator:
                         except Exception as err:
                             self.logger.warning("EngineeringDecisionEngine execution non-blocking warning: %s", err)
 
+                    # 3.6 Autonomous Change Execution Planning Engine (v2.0)
+                    change_exec_engine = getattr(self, "change_execution_planner", None) or context.get("change_execution_planner")
+                    if change_exec_engine and hasattr(change_exec_engine, "plan_changes"):
+                        try:
+                            self.logger.info("Synthesizing Change Execution Plan for Task [%s]...", task.id)
+                            change_execution_plan = change_exec_engine.plan_changes(
+                                task=task,
+                                impact_report=impact_report,
+                                repository_overview=context.get("repository_analysis"),
+                                architecture_manager=getattr(self, "architecture_manager", None) or context.get("architecture_manager"),
+                                refactoring_engine=refact_engine,
+                                decision_engine=eng_decision_engine,
+                                symbol_graph=context.get("symbol_graph"),
+                                context=context,
+                            )
+                            context["change_execution_plan"] = change_execution_plan
+                            try:
+                                plan_file = self.project_root / "memory" / "change_execution_plan.json"
+                                change_exec_engine.save_plan(change_execution_plan, plan_file)
+                            except Exception:
+                                pass
+                            self.logger.info(
+                                "Change Execution Plan generated: %d stages, Risk: %s, Estimated duration: %.1fm",
+                                len(change_execution_plan.ordered_stages),
+                                change_execution_plan.risk,
+                                change_execution_plan.estimated_duration,
+                            )
+                        except Exception as err:
+                            self.logger.warning("ChangeExecutionPlanner execution non-blocking warning: %s", err)
+
+                    # 3.7 Autonomous Predictive Failure Prevention & Quality Intelligence Engine (v2.7)
+                    if hasattr(self, "predictive_quality_engine") and self.predictive_quality_engine:
+                        try:
+                            self.logger.info("Executing Predictive Quality Assessment for Task [%s]...", task.id)
+                            quality_assessment = self.predictive_quality_engine.assess_workspace(
+                                files_content=context.get("project_files"),
+                                task_id=task.id,
+                                impact_summary={"impact_score": getattr(impact_report, "risk_score", 0.0) if impact_report else 0.0},
+                            )
+                            context["quality_assessment"] = quality_assessment
+                            context["predictive_quality_result"] = quality_assessment
+
+                            if getattr(getattr(quality_assessment, "gate_result", None), "status", None) == QualityGateStatus.REJECTED:
+                                self.logger.warning(
+                                    "🚨 Quality Gate REJECTED code generation for Task [%s]: %s (Score: %.1f)",
+                                    task.id,
+                                    quality_assessment.gate_result.reasons,
+                                    quality_assessment.gate_result.score,
+                                )
+                        except Exception as err:
+                            self.logger.warning("PredictiveQualityEngine execution non-blocking warning: %s", err)
+
                     # 4. CoderAgent.execute()
                     self.logger.info("Executing CoderAgent for Task [%s]...", task.id)
                     generated_result = self.coder_agent.execute(context=context, task=task)
@@ -739,6 +1010,27 @@ class Orchestrator:
                         last_error = f"Task [{task.id}] validation failed (Quality: {review_result.overall_quality_score}/100, Regenerate: {review_result.should_regenerate})"
                         self.logger.warning("Task [%s] FAILED review validation or retry budget exhausted.", task.id)
 
+                    # Version 3.1 Autonomous Learning Engine Hook
+                    if hasattr(self, "evolving_engine") and self.evolving_engine:
+                        try:
+                            written_paths = [str(f.path) for f in getattr(write_result, "files_written", [])] if write_result else []
+                            self.evolving_engine.on_task_completed(
+                                task_id=task.id,
+                                task_title=task.title,
+                                success=task_success,
+                                quality_score=float(review_result.overall_quality_score) if review_result else 0.0,
+                                test_pass_rate=float(test_result.pass_rate) if test_result else 100.0,
+                                files_affected=written_paths,
+                                execution_time=time.time() - task_start,
+                                retry_count=int(getattr(retry_result, "attempts", 0)) if retry_result else 0,
+                                review_feedback=getattr(review_result, "feedback", "") if review_result else "",
+                                root_cause=last_error if not task_success else "",
+                                solution="Resolved via coder/retry pipeline" if task_success else "",
+                                project=self.project_root.name if hasattr(self.project_root, "name") else "autodev",
+                            )
+                        except Exception as learn_exc:
+                            self.logger.debug("Learning engine hook exception: %s", learn_exc)
+
                 except Exception as task_exc:
                     self.logger.error("Error executing task [%s]: %s", task.id, task_exc, exc_info=True)
                     tasks_failed.append(task.id)
@@ -755,6 +1047,26 @@ class Orchestrator:
                         execution_records.append(record)
                     except Exception:
                         pass
+
+                    # Version 3.1 Autonomous Learning Hook on Exception
+                    if hasattr(self, "evolving_engine") and self.evolving_engine:
+                        try:
+                            self.evolving_engine.on_task_completed(
+                                task_id=task.id,
+                                task_title=task.title,
+                                success=False,
+                                quality_score=0.0,
+                                test_pass_rate=0.0,
+                                files_affected=[],
+                                execution_time=time.time() - task_start,
+                                retry_count=0,
+                                review_feedback=str(task_exc),
+                                root_cause=str(task_exc),
+                                solution="",
+                                project=self.project_root.name if hasattr(self.project_root, "name") else "autodev",
+                            )
+                        except Exception:
+                            pass
 
             # 8. Check if all tasks for the active day are complete
             current_completed_set = set(self.state_manager.get_state().completed_tasks)
@@ -849,6 +1161,681 @@ class Orchestrator:
                 test_result=last_test_result,
                 review_result=last_review_result,
             )
+
+    def execute_collaborative_cycle(
+        self,
+        tasks: Optional[List[Task]] = None,
+        context: Optional[Dict[str, Any]] = None,
+        max_workers: int = 4,
+    ) -> Dict[str, Any]:
+        """
+        Executes a collaborative multi-agent software engineering cycle (v2.8).
+        Discovers tasks, allocates to specialized agents, executes DAG parallel batches,
+        conducts peer reviews, handles conflicts, and performs synchronization validation.
+        """
+        ctx = context or self.context_builder.build_context(current_day=self.state_manager.get_current_day())
+        task_list = tasks or self.task_planner.execute(ctx)
+
+        # Convert Task objects into TaskAssignment models
+        assignments = []
+        for t in task_list:
+            t_id = getattr(t, "id", getattr(t, "task_id", f"task_{int(time.time()*1000)}"))
+            t_title = getattr(t, "title", str(t))
+            t_desc = getattr(t, "description", "")
+            t_prio_str = str(getattr(t, "priority", "MEDIUM")).upper()
+            t_prio = TaskPriority[t_prio_str] if t_prio_str in TaskPriority.__members__ else TaskPriority.MEDIUM
+            t_skills = getattr(t, "skills", getattr(t, "required_skills", []))
+            t_files = getattr(t, "files", getattr(t, "estimated_files", []))
+            t_deps = getattr(t, "dependencies", [])
+
+            assignments.append(TaskAssignment(
+                task_id=t_id,
+                title=t_title,
+                description=t_desc,
+                required_skills=list(t_skills),
+                priority=t_prio,
+                estimated_files=list(t_files),
+                dependencies=list(t_deps),
+            ))
+
+        self.collaboration_manager.submit_tasks(assignments)
+        cycle_result = self.collaboration_manager.execute_multi_agent_cycle(context=ctx, max_workers=max_workers)
+        telemetry_report = self.collaboration_manager.generate_collaboration_report()
+
+        return {
+            "cycle_result": cycle_result,
+            "telemetry_report": telemetry_report,
+            "tasks_assigned_count": len(assignments),
+        }
+
+    # -------------------------------------------------------------------------
+    # AutoDev v2.9 Distributed Cluster Execution API
+    # -------------------------------------------------------------------------
+
+    def execute_cluster(
+        self,
+        prompt: Optional[str] = None,
+        context: Optional[Dict[str, Any]] = None,
+        num_tasks: int = 4,
+        timeout: float = 30.0,
+    ) -> Dict[str, Any]:
+        """
+        Executes distributed software engineering workloads across the cluster fleet (v2.9).
+        Dispatches multi-stage tasks to worker nodes, manages locks, syncs artifacts,
+        and aggregates real-time cluster telemetry.
+        """
+        ctx = context or self.context_builder.build_context(current_day=self.state_manager.get_current_day())
+        req_prompt = prompt or self.requirement or ctx.get("description", "Distributed Software Engineering Workload")
+
+        return self.cluster_manager.execute_cluster(
+            prompt=req_prompt,
+            context=ctx,
+            num_tasks=num_tasks,
+            timeout=timeout,
+        )
+
+    def execute_remote(
+        self,
+        task: TaskSpec,
+        worker_id: str,
+    ) -> Dict[str, Any]:
+        """
+        Directly executes a single task on an authorized remote worker node (v2.9).
+        """
+        return self.cluster_manager.execute_remote(task=task, worker_id=worker_id)
+
+    def submit_job(
+        self,
+        title: str,
+        tasks: List[TaskSpec],
+        description: str = "",
+    ) -> str:
+        """
+        Submits an asynchronous multi-task DAG job to the cluster (v2.9).
+        """
+        return self.cluster_manager.submit_job(title=title, tasks=tasks, description=description)
+
+    def cancel_job(self, job_id: str) -> bool:
+        """
+        Cancels an active distributed cluster job (v2.9).
+        """
+        return self.cluster_manager.master.cancel_job(job_id=job_id)
+
+    def query_cluster(self) -> Dict[str, Any]:
+        """
+        Queries live cluster status, node health, queue depth, and metrics (v2.9).
+        """
+        return self.cluster_manager.query_cluster()
+
+    def execute_enterprise(
+        self,
+        strategic_goal: str = "Autonomous Enterprise Software Delivery",
+        target_version: str = "3.0.0",
+        budget_usd: float = 250000.0,
+    ) -> Dict[str, Any]:
+        """
+        Executes the full Version 3.0 Autonomous AI Software Company lifecycle:
+        CEO Vision -> Product Roadmap -> Sprint Planning -> Architecture Board ->
+        Engineering Allocation -> QA/Security -> Release Train -> Deployment -> Support -> Analytics.
+        """
+        return self.enterprise_company.run_enterprise_lifecycle(
+            strategic_goal=strategic_goal,
+            target_version=target_version,
+            budget_usd=budget_usd,
+        )
+
+    def simulate_company(
+        self,
+        timeframe: str = "workday",
+        **kwargs: Any,
+    ) -> Dict[str, Any]:
+        """
+        Simulates autonomous enterprise operations across discrete timeframes (workday, sprint, release, quarter, year).
+        """
+        tf = timeframe.lower()
+        if tf == "workday":
+            return self.enterprise_company.simulator.simulate_workday(kwargs.get("day_index", 1))
+        elif tf == "sprint":
+            return self.enterprise_company.simulator.simulate_sprint(
+                sprint_number=kwargs.get("sprint_number", 1),
+                duration_days=kwargs.get("duration_days", 14),
+            )
+        elif tf == "release":
+            return self.enterprise_company.simulator.simulate_release(kwargs.get("version", "3.0.0"))
+        elif tf == "quarter":
+            return self.enterprise_company.simulator.simulate_quarter(
+                quarter=kwargs.get("quarter", "Q1"),
+                year=kwargs.get("year", 2026),
+            )
+        elif tf == "year":
+            return self.enterprise_company.simulator.simulate_year(kwargs.get("year", 2026))
+        else:
+            return self.enterprise_company.simulator.simulate_workday(1)
+
+    def query_company(self) -> Dict[str, Any]:
+        """
+        Queries live enterprise status, C-Suite decisions, financials, headcount, and DORA metrics.
+        """
+        return self.enterprise_company.get_company_overview()
+
+    # -------------------------------------------------------------------------
+    # AutoDev v3.1 Self-Evolving Intelligence Engine Public APIs
+    # -------------------------------------------------------------------------
+
+    def recommend_architecture(
+        self,
+        requirement: str = "",
+        requirements: Optional[str] = None,
+        project_name: Optional[str] = None,
+        domain: str = "general",
+        language: str = "python",
+        scale: str = "medium",
+        **kwargs: Any,
+    ) -> ArchitectureRecommendation:
+        """
+        Recommends folder structure, design patterns, database, API style,
+        and testing strategy based on historical project success (v3.1).
+        """
+        req = requirement or requirements or kwargs.get("req_text", "") or "General Software Architecture"
+        p_name = project_name or kwargs.get("name", "project")
+        rec = self.evolving_engine.recommend_architecture(
+            requirement=req,
+            requirements=req,
+            project_name=p_name,
+            domain=domain,
+            language=language,
+            scale=scale,
+            **kwargs,
+        )
+        return rec
+
+    def run_learning_cycle(
+        self,
+        timeframe_or_payload: Union[str, Dict[str, Any]] = "task",
+        **kwargs: Any,
+    ) -> Dict[str, Any]:
+        """
+        Executes autonomous reflection, pattern mining, memory evolution,
+        and self-improvement planning across discrete timeframes (v3.1).
+        """
+        if isinstance(timeframe_or_payload, dict):
+            task_dict = dict(timeframe_or_payload)
+            task_dict.update(kwargs)
+            res = self.evolving_engine.on_task_completed(
+                task_id=task_dict.get("task_id", "T-MANUAL"),
+                task_title=task_dict.get("title", task_dict.get("task_title", "Manual Task")),
+                success=task_dict.get("success", True),
+                quality_score=task_dict.get("review_score", task_dict.get("quality_score", 95.0)),
+                test_pass_rate=100.0 if task_dict.get("tests_passed", True) else 0.0,
+                files_affected=task_dict.get("affected_files", task_dict.get("files_affected", [])),
+                execution_time=task_dict.get("execution_time", 1.0),
+                retry_count=task_dict.get("retries", task_dict.get("retry_count", 0)),
+                project=task_dict.get("project", self.project_root.name),
+            )
+            res["reflection"] = self.evolving_engine.reflection_engine.to_dict()
+            res["event"] = self.evolving_engine.learning_engine.get_event(res.get("learning_event_id", ""))
+            res["analytics"] = self.evolving_engine.analytics_engine.compute_aggregated_statistics()
+            return res
+
+        tf = str(kwargs.get("timeframe", timeframe_or_payload)).lower()
+        if tf == "task":
+            res = self.evolving_engine.on_task_completed(
+                task_id=kwargs.get("task_id", "T-MANUAL"),
+                task_title=kwargs.get("task_title", kwargs.get("title", "Manual Task")),
+                success=kwargs.get("success", True),
+                quality_score=kwargs.get("quality_score", kwargs.get("review_score", 95.0)),
+                test_pass_rate=kwargs.get("test_pass_rate", 100.0),
+                files_affected=kwargs.get("files_affected", kwargs.get("affected_files", [])),
+                execution_time=kwargs.get("execution_time", 1.0),
+                retry_count=kwargs.get("retry_count", kwargs.get("retries", 0)),
+                review_feedback=kwargs.get("review_feedback", ""),
+                root_cause=kwargs.get("root_cause", ""),
+                solution=kwargs.get("solution", ""),
+                project=kwargs.get("project", self.project_root.name),
+            )
+            res["reflection"] = self.evolving_engine.reflection_engine.to_dict()
+            res["event"] = self.evolving_engine.learning_engine.get_event(res.get("learning_event_id", ""))
+            res["analytics"] = self.evolving_engine.analytics_engine.compute_aggregated_statistics()
+            return res
+        elif tf == "sprint":
+            rep = self.evolving_engine.run_sprint_reflection(
+                sprint_id=kwargs.get("sprint_id", "SPRINT-1"),
+                task_records=kwargs.get("task_records", []),
+            )
+            return rep.to_dict()
+        elif tf == "release":
+            rep = self.evolving_engine.run_release_reflection(
+                release_version=kwargs.get("version", "3.1.0"),
+                release_notes=kwargs.get("notes", ""),
+                metrics=kwargs.get("metrics", {}),
+            )
+            return rep.to_dict()
+        elif tf in ("monthly", "month", "evaluation"):
+            return self.evolving_engine.run_monthly_evolution_cycle(
+                evaluation_period=kwargs.get("period", "2026-10"),
+            )
+        else:
+            return self.evolving_engine.get_learning_dashboard()
+
+    def get_learning_report(self) -> Dict[str, Any]:
+        """
+        Generates comprehensive multi-dimensional learning reports (v3.1).
+        """
+        return self.evolving_engine.generate_comprehensive_learning_report()
+
+    def query_learning_state(self) -> Dict[str, Any]:
+        """
+        Queries live learning dashboard, discovered patterns, playbooks,
+        and longitudinal performance telemetry (v3.1).
+        """
+        return self.evolving_engine.get_learning_dashboard()
+
+    def optimize_prompt(
+        self,
+        raw_prompt: str,
+        task_type: str = "coding",
+        target_tokens: int = 1500,
+    ) -> PromptOptimizationRecord:
+        """
+        Optimizes and compresses prompts using discovered patterns and token efficiency heuristics (v3.1).
+        """
+        return self.evolving_engine.optimize_prompt(
+            raw_prompt=raw_prompt,
+            task_type=task_type,
+            target_tokens=target_tokens,
+        )
+
+    # -------------------------------------------------------------------------
+    # AutoDev v3.2 External Intelligence & Ecosystem Awareness Public APIs
+    # -------------------------------------------------------------------------
+
+    def analyze_ecosystem(
+        self,
+        project_dir: Optional[str] = None,
+        source_files: Optional[Dict[str, str]] = None,
+        project_type: str = "web_api",
+        primary_runtime: str = "Python",
+        runtime_version: str = "3.12",
+    ) -> Dict[str, Any]:
+        """
+        Executes unified multi-dimensional ecosystem analysis:
+        Dependencies, security scan, compatibility, recommendations, radar (v3.2).
+        """
+        target_dir = project_dir or str(self.project_root)
+        return self.ecosystem_engine.analyze_ecosystem(
+            project_dir=target_dir,
+            source_files=source_files,
+            project_type=project_type,
+            primary_runtime=primary_runtime,
+            runtime_version=runtime_version,
+        )
+
+    def get_dependency_report(self, project_dir: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Generates full dependency scan, graph, and vulnerability/conflict analysis (v3.2).
+        """
+        target_dir = project_dir or str(self.project_root)
+        return self.ecosystem_engine.generate_dependency_report(target_dir)
+
+    def get_security_report(
+        self,
+        dependencies: Optional[List[Any]] = None,
+        source_files: Optional[Dict[str, str]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Generates security advisory, CVE risk, and secret/crypto vulnerability scan (v3.2).
+        """
+        return self.ecosystem_engine.generate_security_report(
+            dependencies=dependencies,
+            source_files=source_files,
+        )
+
+    def get_framework_report(self, framework_name: str, current_version: str) -> Dict[str, Any]:
+        """
+        Evaluates framework lifecycle status, breaking changes, and migration pathways (v3.2).
+        """
+        return self.ecosystem_engine.generate_framework_report(framework_name, current_version)
+
+    def get_migration_report(self, technology: str, from_version: str, to_version: str) -> Dict[str, Any]:
+        """
+        Generates actionable migration plan with breaking changes, code updates, and rollbacks (v3.2).
+        """
+        return self.ecosystem_engine.generate_migration_report(technology, from_version, to_version)
+
+    def get_technology_radar(self) -> Dict[str, Any]:
+        """
+        Generates organization-wide technology radar across Adopt/Trial/Assess/Hold rings (v3.2).
+        """
+        return self.ecosystem_engine.generate_technology_radar_report()
+
+    def get_compatibility_report(
+        self,
+        runtime: str = "Python",
+        runtime_version: str = "3.12",
+        dependencies: Optional[List[tuple]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Generates multi-dimensional compatibility matrix across OS, runtimes, containers, clouds (v3.2).
+        """
+        return self.ecosystem_engine.generate_compatibility_report(
+            runtime=runtime,
+            runtime_version=runtime_version,
+            dependencies=dependencies or [],
+        )
+
+    def get_release_intelligence_report(
+        self,
+        updates: Optional[List[Dict[str, str]]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Tracks releases and generates semantic version upgrade impact reports (v3.2).
+        """
+        return self.ecosystem_engine.generate_release_intelligence_report(updates or [])
+
+    def get_ecosystem_recommendations(
+        self,
+        project_type: str = "web_api",
+        language: str = "python",
+    ) -> Dict[str, Any]:
+        """
+        Generates architectural, testing, CI/CD, and library recommendations based on project attributes (v3.2).
+        """
+        return self.ecosystem_engine.generate_engineering_recommendation_report(
+            project_type=project_type,
+            language=language,
+        )
+
+    def query_ecosystem_cache(self, query: str, category: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        Searches persisted external knowledge cache with inverted index full-text search (v3.2).
+        """
+        results = self.ecosystem_engine.knowledge_cache.search(query, category=category)
+        return [r.to_dict() if hasattr(r, "to_dict") else r for r in results]
+
+    def record_external_knowledge(
+        self,
+        key: str,
+        category: str,
+        title: str,
+        content: str,
+        version: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Persists structured external engineering knowledge into searchable cache (v3.2).
+        """
+        meta = metadata or {}
+        if tags:
+            meta["tags"] = tags
+        entry = self.ecosystem_engine.knowledge_cache.put(
+            key=key,
+            category=category,
+            title=title,
+            content=content,
+            version=version or "1.0",
+            metadata=meta,
+        )
+        return entry.to_dict() if hasattr(entry, "to_dict") else entry
+
+    # -------------------------------------------------------------------------
+    # AutoDev v3.3 Multi-Agent Collaboration & Company Execution
+    # -------------------------------------------------------------------------
+
+    def execute(self) -> ExecutionSummary:
+        """
+        Sequential execution mode (v1.0 - v3.2 compatibility alias for run()).
+        """
+        return self.run()
+
+    def execute_company(
+        self,
+        tasks: Optional[List[Any]] = None,
+        custom_runner_fn: Optional[Callable] = None,
+        simulate_ceremonies: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        Executes engineering workload in Distributed Multi-Agent Company Mode (v3.3).
+        Simulates corporate organization with standups, architecture reviews,
+        concurrent engineering tasks, peer code reviews, retrospectives, and releases.
+        """
+        company = self.multi_agent_company
+
+        # 1. Daily Standup
+        standup_info = company.simulate_daily_standup() if simulate_ceremonies else None
+
+        # 2. Convert / prepare tasks
+        company_tasks: List[WorkItem] = []
+        if tasks:
+            for t in tasks:
+                if isinstance(t, WorkItem):
+                    company_tasks.append(t)
+                elif isinstance(t, dict):
+                    company_tasks.append(
+                        WorkItem(
+                            task_id=t.get("task_id", t.get("id", "task_auto")),
+                            title=t.get("title", "Engineering Task"),
+                            description=t.get("description", ""),
+                            priority=t.get("priority", 50),
+                            resources_required=t.get("resources_required", t.get("resources", [])),
+                        )
+                    )
+                elif hasattr(t, "id") and hasattr(t, "title"):
+                    company_tasks.append(
+                        WorkItem(
+                            task_id=str(t.id),
+                            title=str(t.title),
+                            description=getattr(t, "description", ""),
+                            priority=getattr(t, "priority", 50),
+                        )
+                    )
+        else:
+            # Default smoke engineering tasks if none passed
+            company_tasks = [
+                WorkItem(
+                    task_id="task_arch_spec",
+                    title="Design system architecture specification",
+                    priority=80,
+                    resources_required=["architecture_spec.md"],
+                ),
+                WorkItem(
+                    task_id="task_core_impl",
+                    title="Implement core business logic module",
+                    priority=70,
+                    dependencies={"task_arch_spec"},
+                    resources_required=["core_module.py"],
+                ),
+                WorkItem(
+                    task_id="task_qa_tests",
+                    title="Develop automated regression test suite",
+                    priority=60,
+                    dependencies={"task_core_impl"},
+                    resources_required=["test_core.py"],
+                ),
+            ]
+
+        # 3. Design Review if ceremonies enabled
+        design_review = None
+        if simulate_ceremonies:
+            design_review = company.simulate_design_review(
+                title="Engineering Architecture Review",
+                target_artifact="core_architecture",
+            )
+
+        # 4. Dispatch and Execute Tasks Simultaneously
+        exec_results = company.submit_and_execute_tasks(
+            company_tasks,
+            custom_runner_fn=custom_runner_fn,
+        )
+
+        # 5. Code Review if ceremonies enabled
+        code_review = None
+        if simulate_ceremonies and exec_results:
+            first_task_id = exec_results[0].task_id
+            code_review = company.simulate_code_review(task_id=first_task_id)
+
+        # 6. Retrospective & Release Meeting
+        retro_info = company.simulate_retrospective() if simulate_ceremonies else None
+        release_info = company.simulate_release_meeting(version="v3.3.0") if simulate_ceremonies else None
+
+        telemetry = company.engine.get_telemetry()
+
+        return {
+            "mode": "distributed_company",
+            "company_name": company.company_name,
+            "tasks_executed": len(exec_results),
+            "completed_tasks": telemetry.completed_tasks,
+            "failed_tasks": telemetry.failed_tasks,
+            "results": [r.to_dict() for r in exec_results],
+            "telemetry": asdict(telemetry),
+            "standup": standup_info,
+            "design_review": design_review.to_dict() if design_review else None,
+            "code_review": code_review.to_dict() if code_review else None,
+            "retrospective": retro_info,
+            "release": release_info,
+            "reports": {
+                "company_report": company.generate_company_report(),
+                "engineering_report": company.generate_engineering_report(),
+                "performance_report": company.generate_agent_performance_report(),
+                "communication_report": company.generate_communication_graph_report(),
+                "task_timeline": company.generate_task_timeline_report(),
+                "parallel_timeline": company.generate_parallel_execution_timeline_report(),
+                "consensus_report": company.generate_consensus_report(),
+                "conflict_report": company.generate_conflict_resolution_report(),
+                "resource_report": company.generate_resource_utilization_report(),
+                "daily_report": company.generate_daily_engineering_report(),
+            },
+        }
+
+    def run_company(
+        self,
+        tasks: Optional[List[Any]] = None,
+        custom_runner_fn: Optional[Callable] = None,
+        simulate_ceremonies: bool = True,
+    ) -> Dict[str, Any]:
+        """Alias for execute_company() in Distributed Company Mode (v3.3)."""
+        return self.execute_company(
+            tasks=tasks,
+            custom_runner_fn=custom_runner_fn,
+            simulate_ceremonies=simulate_ceremonies,
+        )
+
+    # -------------------------------------------------------------------------
+    # AutoDev v3.4 Autonomous AI Organization Methods
+    # -------------------------------------------------------------------------
+
+    def simulate_organization(
+        self,
+        customer_request: str = "Build a high-performance transactional payments API with JWT authentication and audit trails.",
+        target_version: str = "3.4.0",
+    ) -> Dict[str, Any]:
+        """
+        Executes end-to-end Autonomous AI Organization workflow across 16 departments (v3.4).
+        """
+        return self.enterprise_organization.simulate_company_workflow(
+            customer_request=customer_request,
+            target_version=target_version,
+        )
+
+    def query_organization(self) -> Dict[str, Any]:
+        """
+        Queries organizational structure, department health scores, budget, and metrics (v3.4).
+        """
+        return self.enterprise_organization.get_organization_summary()
+
+    def conduct_organization_meetings(self) -> List[Dict[str, Any]]:
+        """
+        Conducts autonomous corporate meetings (Standup, Planning, Review, Retro, etc.) (v3.4).
+        """
+        return self.enterprise_organization.conduct_all_standard_meetings()
+
+    def resolve_organization_dispute(
+        self,
+        title: str,
+        domain: str,
+        options: List[str],
+        voter_preferences: Dict[str, str],
+        evidence_dict: Optional[Dict[str, List[str]]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Resolves inter-departmental technical or architectural dispute via Decision Engine (v3.4).
+        """
+        return self.enterprise_organization.resolve_departmental_dispute(
+            title=title,
+            domain=domain,
+            options=options,
+            voter_preferences=voter_preferences,
+            evidence_dict=evidence_dict,
+        )
+
+    def simulate_enterprise_federation(
+        self,
+        num_cycles: int = 5,
+        messages_per_cycle: int = 20,
+    ) -> Dict[str, Any]:
+        """
+        Simulates multi-company enterprise ecosystem activity (v3.5).
+        """
+        return self.enterprise_federation.simulate_ecosystem(
+            num_cycles=num_cycles,
+            messages_per_cycle=messages_per_cycle,
+        )
+
+    def execute_cross_company_collaboration(
+        self,
+        algorithm_name: str = "QuantumDeterministicAttention-v2",
+        expected_business_impact_usd: float = 5000000.0,
+    ) -> Dict[str, Any]:
+        """
+        Executes end-to-end autonomous cross-company AI collaboration pipeline (v3.5).
+        """
+        return self.enterprise_federation.execute_cross_company_ai_collaboration(
+            algorithm_name=algorithm_name,
+            expected_business_impact_usd=expected_business_impact_usd,
+        )
+
+    def query_global_dashboard(self) -> Dict[str, Any]:
+        """
+        Retrieves macroscopic enterprise executive telemetry dashboard (v3.5).
+        """
+        return self.enterprise_federation.get_global_dashboard().to_dict()
+
+    def conduct_autonomous_research_cycle(
+        self,
+        module_name: str = "orchestrator",
+        candidate_code: str = "def fast_execution(): return True",
+        baseline_code: str = "def slow_execution(): return False",
+    ) -> Dict[str, Any]:
+        """
+        Executes end-to-end autonomous scientific discovery and R&D pipeline (v3.6).
+        """
+        return self.research_lab.conduct_research_cycle(
+            module_name=module_name,
+            candidate_code=candidate_code,
+            baseline_code=baseline_code,
+        )
+
+    def query_research_metrics(self) -> Dict[str, Any]:
+        """
+        Retrieves global R&D productivity and scientific rigor metrics (v3.6).
+        """
+        return self.research_lab.compute_global_metrics().to_dict()
+
+    def query_patent_portfolio(self) -> List[Dict[str, Any]]:
+        """
+        Retrieves corporate patent portfolio and filings (v3.6).
+        """
+        return [pat.to_dict() for pat in self.research_lab.patent_generator.get_all_applications()]
+
+    def query_paper_repository(self) -> List[Dict[str, Any]]:
+        """
+        Retrieves registered scientific papers and pre-prints (v3.6).
+        """
+        return [p.to_dict() for p in self.research_lab.paper_generator.get_all_papers()]
+
+
+# Backwards compatibility alias
+AutoDevOrchestrator = Orchestrator
 
 
 if __name__ == "__main__":

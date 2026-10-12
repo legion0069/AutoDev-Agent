@@ -1,0 +1,917 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' data:; connect-src 'self' ws: wss:;">
+  <title>AutoDev v2.4 — Distributed Control, HA & Interactive Terminal</title>
+  <style>
+    :root {
+      --bg-dark: #0b0f19;
+      --card-bg: rgba(18, 24, 38, 0.75);
+      --card-border: rgba(255, 255, 255, 0.08);
+      --text-main: #f3f4f6;
+      --text-muted: #9ca3af;
+      --accent-cyan: #06b6d4;
+      --accent-blue: #3b82f6;
+      --accent-purple: #8b5cf6;
+      --accent-green: #10b981;
+      --accent-yellow: #f59e0b;
+      --accent-red: #ef4444;
+      --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: var(--bg-dark);
+      background-image: radial-gradient(circle at 10% 20%, rgba(59, 130, 246, 0.08) 0%, transparent 40%),
+                        radial-gradient(circle at 90% 80%, rgba(139, 92, 246, 0.08) 0%, transparent 40%);
+      color: var(--text-main);
+      font-family: var(--font-family);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      padding: 1rem 2rem;
+      border-bottom: 1px solid var(--card-border);
+      background: rgba(11, 15, 25, 0.85);
+      backdrop-filter: blur(12px);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .brand-logo {
+      width: 2rem;
+      height: 2rem;
+      background: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple));
+      border-radius: 0.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+      color: white;
+      box-shadow: 0 0 15px rgba(6, 182, 212, 0.4);
+    }
+
+    .brand h1 { font-size: 1.25rem; font-weight: 700; letter-spacing: -0.025em; }
+    .brand-badge {
+      background: rgba(59, 130, 246, 0.2);
+      border: 1px solid rgba(59, 130, 246, 0.4);
+      color: #93c5fd;
+      font-size: 0.75rem;
+      padding: 0.2rem 0.5rem;
+      border-radius: 9999px;
+      font-weight: 600;
+    }
+
+    .header-status {
+      display: flex;
+      align-items: center;
+      gap: 1.5rem;
+    }
+
+    .conn-indicator {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.875rem;
+      color: var(--text-muted);
+    }
+
+    .pulse-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent-green);
+      box-shadow: 0 0 8px var(--accent-green);
+      animation: pulse 2s infinite;
+    }
+
+    .pulse-dot.disconnected {
+      background: var(--accent-red);
+      box-shadow: 0 0 8px var(--accent-red);
+      animation: none;
+    }
+
+    @keyframes pulse {
+      0% { transform: scale(0.95); opacity: 0.8; }
+      50% { transform: scale(1.2); opacity: 1; }
+      100% { transform: scale(0.95); opacity: 0.8; }
+    }
+
+    nav {
+      display: flex;
+      padding: 0.5rem 2rem;
+      gap: 1rem;
+      background: rgba(18, 24, 38, 0.4);
+      border-bottom: 1px solid var(--card-border);
+      flex-wrap: wrap;
+    }
+
+    .nav-tab {
+      padding: 0.5rem 1rem;
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      font-size: 0.875rem;
+      font-weight: 500;
+      cursor: pointer;
+      border-radius: 0.375rem;
+      transition: all 0.2s ease;
+    }
+
+    .nav-tab:hover {
+      color: var(--text-main);
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    .nav-tab.active {
+      color: var(--accent-cyan);
+      background: rgba(6, 182, 212, 0.12);
+      border: 1px solid rgba(6, 182, 212, 0.3);
+    }
+
+    main {
+      padding: 1.5rem 2rem;
+      flex: 1;
+      max-width: 1400px;
+      margin: 0 auto;
+      width: 100%;
+    }
+
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    /* KPI Grid */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .kpi-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 0.75rem;
+      padding: 1.25rem;
+      backdrop-filter: blur(12px);
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    }
+
+    .kpi-title {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 0.5rem;
+    }
+
+    .kpi-value {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+
+    .kpi-value.cyan { color: var(--accent-cyan); }
+    .kpi-value.green { color: var(--accent-green); }
+    .kpi-value.yellow { color: var(--accent-yellow); }
+    .kpi-value.purple { color: var(--accent-purple); }
+
+    /* Tables & Cards */
+    .section-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 0.75rem;
+      padding: 1.5rem;
+      backdrop-filter: blur(12px);
+      margin-bottom: 1.5rem;
+    }
+
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+    }
+
+    .section-header h2 {
+      font-size: 1.1rem;
+      font-weight: 600;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.875rem;
+      text-align: left;
+    }
+
+    th, td {
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid var(--card-border);
+    }
+
+    th {
+      color: var(--text-muted);
+      font-weight: 600;
+      text-transform: uppercase;
+      font-size: 0.75rem;
+      letter-spacing: 0.05em;
+    }
+
+    tr:hover td {
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.2rem 0.5rem;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+
+    .badge-running, .badge-active, .badge-ready, .badge-leader {
+      background: rgba(16, 185, 129, 0.15);
+      color: #34d399;
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+
+    .badge-idle, .badge-follower {
+      background: rgba(59, 130, 246, 0.15);
+      color: #93c5fd;
+      border: 1px solid rgba(59, 130, 246, 0.3);
+    }
+
+    .badge-failed, .badge-degraded {
+      background: rgba(239, 68, 68, 0.15);
+      color: #f87171;
+      border: 1px solid rgba(239, 68, 68, 0.3);
+    }
+
+    /* Logs & Terminal */
+    .log-stream, .terminal-window {
+      background: #060911;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 0.5rem;
+      padding: 1rem;
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      height: 450px;
+      overflow-y: auto;
+    }
+
+    .terminal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.75rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid var(--card-border);
+      font-size: 0.85rem;
+      color: var(--text-muted);
+    }
+
+    .terminal-input-bar {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 0.75rem;
+    }
+
+    .input-field {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--card-border);
+      border-radius: 0.375rem;
+      padding: 0.5rem 0.75rem;
+      color: var(--text-main);
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+    }
+
+    .input-field:focus {
+      outline: none;
+      border-color: var(--accent-cyan);
+    }
+
+    .btn {
+      padding: 0.5rem 1rem;
+      border-radius: 0.375rem;
+      border: none;
+      font-weight: 600;
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .btn-primary { background: var(--accent-blue); color: white; }
+    .btn-primary:hover { background: #2563eb; }
+    .btn-cyan { background: var(--accent-cyan); color: #042f2e; }
+    .btn-cyan:hover { background: #0891b2; color: white; }
+    .btn-danger { background: var(--accent-red); color: white; }
+    .btn-danger:hover { background: #dc2626; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <div class="brand-logo">AD</div>
+      <h1>AutoDev Dashboard</h1>
+      <span class="brand-badge">v2.4.0</span>
+    </div>
+    <div class="header-status">
+      <div class="conn-indicator">
+        <span class="pulse-dot" id="connDot"></span>
+        <span id="connLabel">Connected (SSE)</span>
+      </div>
+    </div>
+  </header>
+
+  <nav>
+    <button class="nav-tab active" onclick="switchTab('overview')">System Overview</button>
+    <button class="nav-tab" onclick="switchTab('timeline')">Execution Timeline</button>
+    <button class="nav-tab" onclick="switchTab('workers')">Worker Fleet</button>
+    <button class="nav-tab" onclick="switchTab('quality')">Predictive Quality Intelligence</button>
+    <button class="nav-tab" onclick="switchTab('selfhealing')">Self-Healing & Code Repair</button>
+    <button class="nav-tab" onclick="switchTab('terminal')">Debug Terminal</button>
+    <button class="nav-tab" onclick="switchTab('stream')">Live Telemetry Stream</button>
+    <button class="nav-tab" onclick="switchTab('controls')">Safe Control Actions</button>
+  </nav>
+
+  <main>
+    <!-- TAB 1: OVERVIEW -->
+    <div id="tab-overview" class="tab-content active">
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <div class="kpi-title">Coordinator Role</div>
+          <div class="kpi-value cyan" id="kpi-role">LEADER</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-title">Fencing Term</div>
+          <div class="kpi-value purple" id="kpi-term">1</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-title">Active Workers</div>
+          <div class="kpi-value green" id="kpi-workers">0</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-title">Active Transactions</div>
+          <div class="kpi-value yellow" id="kpi-txs">0</div>
+        </div>
+      </div>
+
+      <div class="section-card">
+        <div class="section-header">
+          <h2>Active Transactions</h2>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Tx ID</th>
+              <th>Plan ID</th>
+              <th>Status</th>
+              <th>Mode</th>
+              <th>Progress</th>
+              <th>Last Update</th>
+            </tr>
+          </thead>
+          <tbody id="overview-tx-body">
+            <tr><td colspan="6" class="empty-state">No active execution plans. Coordinator ready.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- TAB 2: TIMELINE -->
+    <div id="tab-timeline" class="tab-content">
+      <div class="section-card">
+        <div class="section-header">
+          <h2>Execution History & Checkpoints</h2>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Tx ID</th>
+              <th>Status</th>
+              <th>Stages</th>
+              <th>Validation</th>
+              <th>Checkpoints</th>
+              <th>Recovery Status</th>
+            </tr>
+          </thead>
+          <tbody id="timeline-body">
+            <tr><td colspan="6" class="empty-state">No execution transactions recorded.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- TAB 3: WORKER FLEET -->
+    <div id="tab-workers" class="tab-content">
+      <div class="section-card">
+        <div class="section-header">
+          <h2>Registered Worker Fleet</h2>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Worker ID</th>
+              <th>Type</th>
+              <th>State</th>
+              <th>Capabilities</th>
+              <th>Active Tasks</th>
+              <th>Concurrency Limit</th>
+              <th>Last Heartbeat</th>
+            </tr>
+          </thead>
+          <tbody id="worker-table-body">
+            <tr><td colspan="7" class="empty-state">No workers connected.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- TAB: SELF-HEALING & CODE REPAIR (v2.6) -->
+    <div id="tab-selfhealing" class="tab-content">
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <div class="kpi-title">Self-Healing Status</div>
+          <div class="kpi-value green" id="sh-status">READY</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-title">Repairs Verified</div>
+          <div class="kpi-value cyan" id="sh-repaired-count">0</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-title">Rollbacks Executed</div>
+          <div class="kpi-value purple" id="sh-rollback-count">0</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-title">Validation Gate Pass Rate</div>
+          <div class="kpi-value yellow" id="sh-gate-rate">100%</div>
+        </div>
+      </div>
+
+      <div class="section-card">
+        <div class="section-header">
+          <h2>Active / Recent Self-Healing Jobs</h2>
+          <span style="font-size: 0.8rem; color: var(--accent-cyan);">🛡️ Verified Isolation & Transactional Rollback Protection</span>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Repair ID</th>
+              <th>Target Test</th>
+              <th>Classification</th>
+              <th>Confidence</th>
+              <th>Gate Status</th>
+              <th>Disposition</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="selfhealing-jobs-body">
+            <tr><td colspan="7" class="empty-state">No self-healing transactions active. Engine idling.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="section-card">
+        <div class="section-header">
+          <h2>Candidate Patch & Diagnostic Inspector</h2>
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+          <div>
+            <h3 style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 0.5rem;">Root Cause Evidence & Hypotheses</h3>
+            <pre id="sh-evidence-view" style="background: rgba(0,0,0,0.4); padding: 1rem; border-radius: 0.375rem; font-family: var(--font-mono); font-size: 0.8rem; height: 200px; overflow-y: auto; color: #93c5fd;">No active diagnostic data.</pre>
+          </div>
+          <div>
+            <h3 style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 0.5rem;">Proposed Minimal Unified Diff</h3>
+            <pre id="sh-diff-view" style="background: rgba(0,0,0,0.4); padding: 1rem; border-radius: 0.375rem; font-family: var(--font-mono); font-size: 0.8rem; height: 200px; overflow-y: auto; color: #a7f3d0;">No candidate patch proposed.</pre>
+          </div>
+        </div>
+        <div style="display: flex; gap: 0.75rem; margin-top: 1rem;">
+          <button class="btn btn-cyan" onclick="sendControlAction('approve_repair', {})">Approve & Integrate Patch</button>
+          <button class="btn btn-danger" onclick="sendControlAction('reject_repair', {})">Reject Candidate</button>
+          <button class="btn btn-primary" onclick="sendControlAction('rerun_diagnostics', {})">Rerun Diagnosis</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 3.5: PREDICTIVE QUALITY INTELLIGENCE (v2.7) -->
+    <div id="tab-quality" class="tab-content">
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <div class="kpi-title">Maintainability Index</div>
+          <div class="kpi-value cyan" id="pq-mi">--/100</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-title">Cyclomatic Complexity</div>
+          <div class="kpi-value blue" id="pq-cc">-- avg</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-title">Code Duplication</div>
+          <div class="kpi-value green" id="pq-dup">0%</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-title">Predicted Failure Risk</div>
+          <div class="kpi-value yellow" id="pq-fail-risk">0.0%</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-title">Security Confidence</div>
+          <div class="kpi-value purple" id="pq-sec-conf">100%</div>
+        </div>
+      </div>
+
+      <!-- Quality Gate Status Banner -->
+      <div class="section-card" id="pq-gate-card" style="border-left: 4px solid var(--accent-green);">
+        <div class="section-header">
+          <h2>Quality Gate Evaluation</h2>
+          <span id="pq-gate-badge" class="status-badge badge-running">PASSED</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <div>
+            <p id="pq-gate-summary" style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 0.5rem;">Pre-generation quality gates checked. All complexity, dependency, and regression thresholds satisfied.</p>
+            <div id="pq-gate-recs" style="font-size: 0.85rem; color: #93c5fd;"></div>
+          </div>
+          <button class="btn btn-cyan" onclick="fetchQualityData()">Run Quality Assessment</button>
+        </div>
+      </div>
+
+      <!-- Predictive Risk Forecasting & Architectural Health -->
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem;">
+        <div class="section-card">
+          <div class="section-header">
+            <h2>Predictive Risk Forecast</h2>
+            <span style="font-size: 0.8rem; color: var(--accent-cyan);">Deterministic Risk Engine</span>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; font-size: 0.85rem;">
+            <div style="background: rgba(0,0,0,0.25); padding: 0.75rem; border-radius: 0.375rem;">
+              <div style="color: var(--text-muted);">Regression Prob:</div>
+              <strong id="pq-risk-reg" style="font-size: 1.1rem; color: var(--accent-yellow);">0.0%</strong>
+            </div>
+            <div style="background: rgba(0,0,0,0.25); padding: 0.75rem; border-radius: 0.375rem;">
+              <div style="color: var(--text-muted);">API Breaking Risk:</div>
+              <strong id="pq-risk-api" style="font-size: 1.1rem; color: var(--accent-red);">0.0%</strong>
+            </div>
+            <div style="background: rgba(0,0,0,0.25); padding: 0.75rem; border-radius: 0.375rem;">
+              <div style="color: var(--text-muted);">Arch Drift Risk:</div>
+              <strong id="pq-risk-drift" style="font-size: 1.1rem; color: var(--accent-blue);">0.0%</strong>
+            </div>
+            <div style="background: rgba(0,0,0,0.25); padding: 0.75rem; border-radius: 0.375rem;">
+              <div style="color: var(--text-muted);">Composite Risk:</div>
+              <strong id="pq-risk-composite" style="font-size: 1.1rem; color: var(--accent-green);">0.0/100</strong>
+            </div>
+          </div>
+        </div>
+
+        <div class="section-card">
+          <div class="section-header">
+            <h2>Dependency Health & Cycles</h2>
+            <span style="font-size: 0.8rem; color: var(--accent-purple);">Tarjan SCC Analyzer</span>
+          </div>
+          <div style="font-size: 0.85rem;">
+            <div style="margin-bottom: 0.5rem;"><strong>Instability (I):</strong> <span id="pq-dep-instability">0.00</span> | <strong>Abstractness (A):</strong> <span id="pq-dep-abstractness">0.00</span></div>
+            <div style="margin-bottom: 0.5rem;"><strong>Distance to Main Sequence:</strong> <span id="pq-dep-dist">0.00</span></div>
+            <div id="pq-dep-cycles" style="color: var(--text-muted); max-height: 90px; overflow-y: auto;">No circular dependency cycles detected.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Detected Quality Issues & Remediation Suggestions -->
+      <div class="section-card">
+        <div class="section-header">
+          <h2>Quality Gate Issues & Proactive Remediation</h2>
+          <span style="font-size: 0.8rem; color: var(--accent-cyan);">Pre-Execution Quality Intelligence</span>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Severity</th>
+              <th>Rule / Category</th>
+              <th>Location</th>
+              <th>Description</th>
+              <th>Remediation Suggestion</th>
+            </tr>
+          </thead>
+          <tbody id="pq-issues-body">
+            <tr><td colspan="5" class="empty-state">No quality defects or architectural violations identified. Workspace healthy.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- TAB 4: INTERACTIVE DEBUG TERMINAL (v2.4) -->
+    <div id="tab-terminal" class="tab-content">
+      <div class="section-card">
+        <div class="section-header">
+          <h2>Authorized Sandbox Debug Terminal</h2>
+          <span style="font-size: 0.8rem; color: var(--accent-yellow);">🔒 Sandbox Container Isolated (Coordinator Host Disabled)</span>
+        </div>
+
+        <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap;">
+          <input type="text" id="termTxId" class="input-field" placeholder="Transaction ID (e.g. tx-001)" value="tx-dev-01" style="width: 180px;">
+          <input type="text" id="termSandboxId" class="input-field" placeholder="Sandbox ID" value="sandbox-dev-01" style="width: 180px;">
+          <input type="text" id="termPrincipalId" class="input-field" placeholder="Principal ID" value="developer" style="width: 140px;">
+          <button class="btn btn-cyan" onclick="startTerminalSession()">Start Debug Session</button>
+          <button class="btn btn-danger" onclick="terminateTerminalSession()">Terminate Session</button>
+        </div>
+
+        <div class="terminal-header">
+          <span>Session: <strong id="termSessionId">None</strong></span>
+          <span>Status: <span id="termStatusBadge" class="status-badge badge-idle">DISCONNECTED</span></span>
+          <span>Expires in: <strong id="termRemaining">--:--</strong></span>
+        </div>
+
+        <div id="terminalScreen" class="terminal-window">
+          <pre id="terminalOutput" style="white-space: pre-wrap; font-family: var(--font-mono); color: #34d399;">Welcome to AutoDev v2.4 Interactive Debug Terminal.
+Attach to an authorized isolated sandbox to begin debugging.</pre>
+        </div>
+
+        <div class="terminal-input-bar">
+          <input type="text" id="terminalCmdInput" class="input-field" style="flex: 1;" placeholder="Enter command..." onkeydown="if(event.key==='Enter') sendTerminalCmd()">
+          <button class="btn btn-primary" onclick="sendTerminalCmd()">Send</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 5: TELEMETRY STREAM -->
+    <div id="tab-stream" class="tab-content">
+      <div class="section-card">
+        <div class="section-header">
+          <h2>Live Telemetry Stream</h2>
+        </div>
+        <div id="logContainer" class="log-stream"></div>
+      </div>
+    </div>
+
+    <!-- TAB 6: SAFE CONTROLS -->
+    <div id="tab-controls" class="tab-content">
+      <div class="section-card">
+        <div class="section-header">
+          <h2>Safe Control Actions</h2>
+        </div>
+        <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+          <button class="btn btn-primary" onclick="sendControlAction('drain_all_workers', {})">Drain Fleet</button>
+          <button class="btn btn-primary" onclick="sendControlAction('trigger_gc', {})">Trigger Artifact GC</button>
+          <button class="btn btn-danger" onclick="sendControlAction('reconcile_ha_failover', {})">Reconcile Failover</button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    let activeSessionId = null;
+    let termPollInterval = null;
+    let evtSource = null;
+    let allLogs = [];
+
+    function switchTab(tabName) {
+      document.querySelectorAll('.nav-tab').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+      event.target.classList.add('active');
+      document.getElementById('tab-' + tabName).classList.add('active');
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    function fetchStatus() {
+      fetch("/status")
+        .then(res => res.json())
+        .then(data => {
+          document.getElementById("kpi-role").innerText = data.coordinator_role || "LEADER";
+          document.getElementById("kpi-term").innerText = data.fencing_term || "1";
+          document.getElementById("kpi-workers").innerText = data.total_workers || "0";
+          document.getElementById("kpi-txs").innerText = data.active_transactions || "0";
+        })
+        .catch(() => {});
+    }
+
+    function startTerminalSession() {
+      const txId = document.getElementById("termTxId").value.trim();
+      const sandboxId = document.getElementById("termSandboxId").value.trim();
+      const principalId = document.getElementById("termPrincipalId").value.trim();
+
+      fetch("/terminal/message", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "create",
+          principal_id: principalId,
+          transaction_id: txId,
+          sandbox_id: sandboxId,
+          is_coordinator_host: false
+        })
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.type === "created") {
+          activeSessionId = data.session_id;
+          document.getElementById("termSessionId").innerText = activeSessionId;
+          document.getElementById("termStatusBadge").innerText = "ACTIVE";
+          document.getElementById("termStatusBadge").className = "status-badge badge-running";
+          document.getElementById("terminalOutput").innerText = `[SESSION ATTACHED: ${activeSessionId}]\nSandbox: ${sandboxId}\nPrincipal: ${principalId}\n\n`;
+          if (termPollInterval) clearInterval(termPollInterval);
+          termPollInterval = setInterval(pollTerminalOutput, 500);
+        } else {
+          alert("Terminal Authorization Denied: " + (data.message || JSON.stringify(data)));
+        }
+      })
+      .catch(err => alert("Error starting debug session: " + err));
+    }
+
+    function sendTerminalCmd() {
+      if (!activeSessionId) {
+        alert("No active terminal session. Click 'Start Debug Session' first.");
+        return;
+      }
+      const input = document.getElementById("terminalCmdInput");
+      const cmd = input.value;
+      if (!cmd) return;
+
+      fetch("/terminal/message", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "input",
+          session_id: activeSessionId,
+          data: cmd + "\n"
+        })
+      })
+      .then(() => {
+        input.value = "";
+        setTimeout(pollTerminalOutput, 100);
+      })
+      .catch(err => console.error(err));
+    }
+
+    function pollTerminalOutput() {
+      if (!activeSessionId) return;
+      fetch("/terminal/message", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "read",
+          session_id: activeSessionId,
+          timeout_ms: 50
+        })
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.type === "output") {
+          if (data.data) {
+            const outElem = document.getElementById("terminalOutput");
+            outElem.innerText += data.data;
+            const screen = document.getElementById("terminalScreen");
+            screen.scrollTop = screen.scrollHeight;
+          }
+          if (data.remaining_seconds !== undefined) {
+            const mins = Math.floor(data.remaining_seconds / 60);
+            const secs = Math.floor(data.remaining_seconds % 60);
+            document.getElementById("termRemaining").innerText = `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+          }
+          if (data.status !== "active") {
+            document.getElementById("termStatusBadge").innerText = data.status.toUpperCase();
+            document.getElementById("termStatusBadge").className = "status-badge badge-failed";
+            if (termPollInterval) clearInterval(termPollInterval);
+          }
+        }
+      })
+      .catch(() => {});
+    }
+
+    function terminateTerminalSession() {
+      if (!activeSessionId) return;
+      fetch("/terminal/message", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "terminate",
+          session_id: activeSessionId
+        })
+      })
+      .then(() => {
+        document.getElementById("termStatusBadge").innerText = "TERMINATED";
+        document.getElementById("termStatusBadge").className = "status-badge badge-failed";
+        if (termPollInterval) clearInterval(termPollInterval);
+        activeSessionId = null;
+      });
+    }
+
+    function sendControlAction(action, payload) {
+      fetch(`/control/${action}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      })
+      .then(res => res.json())
+      .then(data => alert(data.message || "Action executed."));
+    }
+
+    function connectSSE() {
+      if (evtSource) evtSource.close();
+      evtSource = new EventSource("/events");
+      evtSource.onopen = () => {
+        document.getElementById("connDot").className = "pulse-dot";
+        document.getElementById("connLabel").innerText = "Connected (SSE)";
+      };
+      evtSource.onerror = () => {
+        document.getElementById("connDot").className = "pulse-dot disconnected";
+        document.getElementById("connLabel").innerText = "Reconnecting...";
+      };
+      evtSource.onmessage = (e) => {
+        try {
+          const evt = JSON.parse(e.data);
+          const c = document.getElementById("logContainer");
+          const div = document.createElement("div");
+          div.style.padding = "2px 0";
+          div.innerHTML = `<span style="color: #60a5fa;">[${evt.source_component || 'SYS'}]</span> <strong>${evt.event_type}</strong>: ${escapeHtml(JSON.stringify(evt.payload))}`;
+          c.insertBefore(div, c.firstChild);
+        } catch(err) {}
+      };
+    }
+
+    function fetchQualityData() {
+      fetch("/quality")
+        .then(res => res.json())
+        .then(data => {
+          if (!data) return;
+          const kpis = data.kpis || {};
+          const comp = data.complexity || {};
+          const risk = data.risks || {};
+          const gate = data.quality_gate || {};
+          const dep = data.dependency_health || {};
+
+          document.getElementById("pq-mi").innerText = (comp.maintainability_index !== undefined ? comp.maintainability_index.toFixed(1) : (kpis.maintainability_index || 85.0)) + "/100";
+          document.getElementById("pq-cc").innerText = (comp.cyclomatic_complexity !== undefined ? comp.cyclomatic_complexity.toFixed(1) : (kpis.cyclomatic_complexity || 2.5)) + " avg";
+          document.getElementById("pq-dup").innerText = (kpis.duplication_percentage || 0.0).toFixed(1) + "%";
+          document.getElementById("pq-fail-risk").innerText = ((risk.future_failure_probability || 0.0) * 100).toFixed(1) + "%";
+          document.getElementById("pq-sec-conf").innerText = ((risk.security_confidence || 1.0) * 100).toFixed(1) + "%";
+
+          const gateStatus = gate.status || "PASSED";
+          const badge = document.getElementById("pq-gate-badge");
+          badge.innerText = gateStatus;
+          if (gateStatus === "PASSED") {
+            badge.className = "status-badge badge-running";
+            document.getElementById("pq-gate-card").style.borderLeftColor = "var(--accent-green)";
+          } else if (gateStatus === "WARNING") {
+            badge.className = "status-badge badge-idle";
+            document.getElementById("pq-gate-card").style.borderLeftColor = "var(--accent-yellow)";
+          } else {
+            badge.className = "status-badge badge-failed";
+            document.getElementById("pq-gate-card").style.borderLeftColor = "var(--accent-red)";
+          }
+
+          document.getElementById("pq-risk-reg").innerText = ((risk.regression_probability || 0.0) * 100).toFixed(1) + "%";
+          document.getElementById("pq-risk-api").innerText = ((risk.api_breaking_risk || 0.0) * 100).toFixed(1) + "%";
+          document.getElementById("pq-risk-drift").innerText = ((risk.architecture_drift_probability || 0.0) * 100).toFixed(1) + "%";
+          document.getElementById("pq-risk-composite").innerText = (risk.composite_risk_score || 0.0).toFixed(1) + "/100";
+
+          document.getElementById("pq-dep-instability").innerText = (dep.package_instability || 0.0).toFixed(2);
+          document.getElementById("pq-dep-abstractness").innerText = (dep.abstractness || 0.0).toFixed(2);
+          document.getElementById("pq-dep-dist").innerText = (dep.distance_from_main_sequence || 0.0).toFixed(2);
+
+          const issuesBody = document.getElementById("pq-issues-body");
+          const issues = data.issues || [];
+          if (issues.length > 0) {
+            issuesBody.innerHTML = issues.map(iss => `
+              <tr>
+                <td><span class="status-badge ${iss.severity === 'CRITICAL' || iss.severity === 'HIGH' ? 'badge-failed' : 'badge-idle'}">${escapeHtml(iss.severity)}</span></td>
+                <td><strong>${escapeHtml(iss.rule_id || iss.category)}</strong></td>
+                <td><code>${escapeHtml(iss.file_path || 'workspace')}:${iss.line_number || 1}</code></td>
+                <td>${escapeHtml(iss.description)}</td>
+                <td style="color: #93c5fd;">${escapeHtml(iss.remediation || '-')}</td>
+              </tr>
+            `).join("");
+          } else {
+            issuesBody.innerHTML = '<tr><td colspan="5" class="empty-state">No quality defects or architectural violations identified. Workspace healthy.</td></tr>';
+          }
+        })
+        .catch(() => {});
+    }
+
+    fetchStatus();
+    fetchQualityData();
+    connectSSE();
+    setInterval(fetchStatus, 3000);
+    setInterval(fetchQualityData, 10000);
+  </script>
+</body>
+</html>

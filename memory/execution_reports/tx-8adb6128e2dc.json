@@ -1,0 +1,26 @@
+{
+  "transaction_id": "tx-8adb6128e2dc",
+  "overall_success": true,
+  "status": "SUCCEEDED",
+  "stages_completed": 1,
+  "stages_failed": 0,
+  "operations_completed": 1,
+  "operations_failed": 0,
+  "files_created": [
+    "telemetry_test.py"
+  ],
+  "files_modified": [],
+  "files_deleted": [],
+  "validation_summary": {},
+  "rollback_summary": null,
+  "duration_seconds": 0.0271,
+  "recovery_required": false,
+  "workspace_clean": true,
+  "initial_git_head": null,
+  "final_git_head": null,
+  "warnings": [],
+  "errors": [],
+  "artifacts": [],
+  "started_at": "2026-10-09T05:07:20.272714+00:00",
+  "finished_at": null
+}

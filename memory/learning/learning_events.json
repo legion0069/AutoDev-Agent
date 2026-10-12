@@ -1,0 +1,136 @@
+[
+  {
+    "id": "EVT-1791558700465-0001",
+    "event_id": "EVT-1791558700465-0001",
+    "timestamp": 1791558700.4654243,
+    "project": "autodev-agent",
+    "project_id": "autodev-agent",
+    "task": "T-MANUAL",
+    "task_id": "T-MANUAL",
+    "category": "ARCHITECTURE_SUCCESS",
+    "confidence": 0.92,
+    "importance": 70.0,
+    "summary": "Task 'Manual Task' completed with 0 retries and review 95.0/100",
+    "affected_files": [],
+    "files": [],
+    "root_cause": "",
+    "solution": "Synthesized verified module implementation",
+    "metrics": {
+      "retries": 0,
+      "review_score": 95.0,
+      "duration_seconds": 1.0,
+      "tests_passed": 10
+    },
+    "key_metrics": {
+      "retries": 0,
+      "review_score": 95.0,
+      "duration_seconds": 1.0,
+      "tests_passed": 10
+    },
+    "tags": [
+      "autodev-agent",
+      "autonomous_task",
+      "architecture_success"
+    ]
+  },
+  {
+    "id": "EVT-1791558716683-0002",
+    "event_id": "EVT-1791558716683-0002",
+    "timestamp": 1791558716.6837888,
+    "project": "autodev-agent",
+    "project_id": "autodev-agent",
+    "task": "T-MANUAL",
+    "task_id": "T-MANUAL",
+    "category": "ARCHITECTURE_SUCCESS",
+    "confidence": 0.92,
+    "importance": 70.0,
+    "summary": "Task 'Manual Task' completed with 0 retries and review 95.0/100",
+    "affected_files": [],
+    "files": [],
+    "root_cause": "",
+    "solution": "Synthesized verified module implementation",
+    "metrics": {
+      "retries": 0,
+      "review_score": 95.0,
+      "duration_seconds": 1.0,
+      "tests_passed": 10
+    },
+    "key_metrics": {
+      "retries": 0,
+      "review_score": 95.0,
+      "duration_seconds": 1.0,
+      "tests_passed": 10
+    },
+    "tags": [
+      "autodev-agent",
+      "autonomous_task",
+      "architecture_success"
+    ]
+  },
+  {
+    "id": "EVT-1791558721917-0003",
+    "event_id": "EVT-1791558721917-0003",
+    "timestamp": 1791558721.9171753,
+    "project": "sprint_cadence",
+    "project_id": "sprint_cadence",
+    "task": "Sprint-10",
+    "task_id": "Sprint-10",
+    "category": "TEST_STRATEGY",
+    "confidence": 0.95,
+    "importance": 80.0,
+    "summary": "Sprint 10 closed with 20/20 pts delivered",
+    "affected_files": [],
+    "files": [],
+    "root_cause": "",
+    "solution": "",
+    "metrics": {
+      "completed_points": 20,
+      "velocity": 20,
+      "blockers": 0
+    },
+    "key_metrics": {
+      "completed_points": 20,
+      "velocity": 20,
+      "blockers": 0
+    },
+    "tags": [
+      "sprint",
+      "sprint_10",
+      "velocity"
+    ]
+  },
+  {
+    "id": "EVT-1791558728100-0004",
+    "event_id": "EVT-1791558728100-0004",
+    "timestamp": 1791558728.1002276,
+    "project": "autodev-agent",
+    "project_id": "autodev-agent",
+    "task": "T-MANUAL",
+    "task_id": "T-MANUAL",
+    "category": "ARCHITECTURE_SUCCESS",
+    "confidence": 0.92,
+    "importance": 70.0,
+    "summary": "Task 'Manual Task' completed with 0 retries and review 95.0/100",
+    "affected_files": [],
+    "files": [],
+    "root_cause": "",
+    "solution": "Synthesized verified module implementation",
+    "metrics": {
+      "retries": 0,
+      "review_score": 95.0,
+      "duration_seconds": 1.0,
+      "tests_passed": 10
+    },
+    "key_metrics": {
+      "retries": 0,
+      "review_score": 95.0,
+      "duration_seconds": 1.0,
+      "tests_passed": 10
+    },
+    "tags": [
+      "autodev-agent",
+      "autonomous_task",
+      "architecture_success"
+    ]
+  }
+]

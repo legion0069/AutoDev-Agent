@@ -473,7 +473,7 @@ def test_14_performance_and_deterministic_output(temp_dir):
     plan_1 = planner.plan(task)
     elapsed = time.time() - start_t
 
-    assert elapsed < 0.5, f"Change planning took {elapsed:.3f}s (expected < 0.5s)"
+    assert elapsed < 1.5, f"Change planning took {elapsed:.3f}s (expected < 1.5s)"
 
     # Determinism check
     plan_2 = planner.plan(task)

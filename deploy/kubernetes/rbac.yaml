@@ -1,0 +1,53 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: autodev-controller
+  namespace: autodev-system
+  labels:
+    app.kubernetes.io/name: autodev
+    app.kubernetes.io/component: controller
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: autodev-controller-role
+rules:
+  # AutoDev CRD permissions
+  - apiGroups: ["autodev.io"]
+    resources: ["autodevworkerpools", "autodevworkerpools/status", "autodevworkerpools/scale"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Pod and Deployment management (namespaced worker pools)
+  - apiGroups: [""]
+    resources: ["pods", "pods/log", "pods/status", "services", "configmaps", "events"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "deployments/status", "deployments/scale"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Read-only cluster capabilities for safe scheduling
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: autodev-controller-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: autodev-controller-role
+subjects:
+  - kind: ServiceAccount
+    name: autodev-controller
+    namespace: autodev-system
+---
+# Least-privilege ServiceAccount for AutoDev Workers (Strict isolation)
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: autodev-worker
+  namespace: autodev-system
+  labels:
+    app.kubernetes.io/name: autodev
+    app.kubernetes.io/component: worker
+# Note: Worker SA has ZERO cluster privileges by default for defense-in-depth isolation.

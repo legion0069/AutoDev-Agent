@@ -1,0 +1,193 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: autodevworkerpools.autodev.io
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.14.0
+    description: "AutoDev Autonomous AI Software Development Agent Worker Pool CRD"
+spec:
+  group: autodev.io
+  names:
+    kind: AutoDevWorkerPool
+    listKind: AutoDevWorkerPoolList
+    plural: autodevworkerpools
+    singular: autodevworkerpool
+    shortNames:
+      - adwp
+      - workerpool
+  scope: Namespaced
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+        scale:
+          specReplicasPath: .spec.replicas
+          statusReplicasPath: .status.replicas
+          labelSelectorPath: .status.labelSelector
+      schema:
+        openAPIV3Schema:
+          type: object
+          required:
+            - spec
+          properties:
+            apiVersion:
+              type: string
+            kind:
+              type: string
+            metadata:
+              type: object
+            spec:
+              type: object
+              required:
+                - replicas
+                - image
+              properties:
+                replicas:
+                  type: integer
+                  minimum: 0
+                  maximum: 100
+                  description: "Desired number of active worker replicas"
+                minReplicas:
+                  type: integer
+                  minimum: 0
+                  maximum: 100
+                  default: 1
+                  description: "Minimum worker replicas when autoscaling"
+                maxReplicas:
+                  type: integer
+                  minimum: 1
+                  maximum: 100
+                  default: 10
+                  description: "Maximum worker replicas when autoscaling"
+                image:
+                  type: string
+                  description: "Container image reference for worker runtime"
+                requiredCapabilities:
+                  type: array
+                  items:
+                    type: string
+                  description: "Required worker capabilities (e.g. python, docker, nodejs, git)"
+                allowedOperationTypes:
+                  type: array
+                  items:
+                    type: string
+                  description: "Allowed operation types for worker task scheduling"
+                resources:
+                  type: object
+                  properties:
+                    limits:
+                      type: object
+                      properties:
+                        cpu:
+                          type: string
+                        memory:
+                          type: string
+                    requests:
+                      type: object
+                      properties:
+                        cpu:
+                          type: string
+                        memory:
+                          type: string
+                scalingPolicy:
+                  type: object
+                  properties:
+                    enabled:
+                      type: boolean
+                      default: true
+                    queueDepthThreshold:
+                      type: integer
+                      minimum: 1
+                      default: 5
+                    busyRatioScaleUpThreshold:
+                      type: number
+                      minimum: 0.0
+                      maximum: 1.0
+                      default: 0.8
+                    busyRatioScaleDownThreshold:
+                      type: number
+                      minimum: 0.0
+                      maximum: 1.0
+                      default: 0.2
+                    cooldownSeconds:
+                      type: integer
+                      minimum: 5
+                      default: 30
+                    stabilizationWindowSeconds:
+                      type: integer
+                      minimum: 10
+                      default: 60
+                    maxScaleChangePerInterval:
+                      type: integer
+                      minimum: 1
+                      default: 5
+                securityProfile:
+                  type: object
+                  properties:
+                    runAsNonRoot:
+                      type: boolean
+                      default: true
+                    readOnlyRootFilesystem:
+                      type: boolean
+                      default: true
+                    allowPrivilegeEscalation:
+                      type: boolean
+                      default: false
+                    privileged:
+                      type: boolean
+                      default: false
+                heartbeatTimeoutSeconds:
+                  type: integer
+                  minimum: 5
+                  default: 30
+                gracefulShutdownSeconds:
+                  type: integer
+                  minimum: 10
+                  default: 60
+            status:
+              type: object
+              properties:
+                replicas:
+                  type: integer
+                  description: "Current observed replica count"
+                readyReplicas:
+                  type: integer
+                  description: "Number of workers ready to accept tasks"
+                activeTasks:
+                  type: integer
+                  description: "Number of active tasks across all workers in pool"
+                labelSelector:
+                  type: string
+                  description: "Label selector for worker pods"
+                phase:
+                  type: string
+                  enum:
+                    - Pending
+                    - Scaling
+                    - Running
+                    - Degraded
+                    - Failed
+                conditions:
+                  type: array
+                  items:
+                    type: object
+                    required:
+                      - type
+                      - status
+                    properties:
+                      type:
+                        type: string
+                      status:
+                        type: string
+                      reason:
+                        type: string
+                      message:
+                        type: string
+                      lastTransitionTime:
+                        type: string
+                lastScaleTime:
+                  type: string
+                observedGeneration:
+                  type: integer

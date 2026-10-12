@@ -1,0 +1,181 @@
+{
+  "plan_id": "CEP-TASK-UNK-7419",
+  "task_id": "TASK-UNK",
+  "ordered_stages": [
+    {
+      "stage_number": 1,
+      "title": "Business Logic & Core Services",
+      "operations": [
+        {
+          "operation_id": "unknown_op",
+          "operation_type": "MODIFY_FILE",
+          "file": "custom_path/nested/something.unknown",
+          "symbol": null,
+          "reason": "",
+          "dependencies": [],
+          "estimated_minutes": 10.0,
+          "risk": "LOW",
+          "validation_required": true,
+          "rollback_required": true,
+          "commit_group": "default",
+          "parallel_group": "group-1",
+          "description": "MODIFY_FILE on 'custom_path/nested/something.unknown': ",
+          "target_content": null,
+          "inverse_operation": "REVERT_CHANGES on 'custom_path/nested/something.unknown'",
+          "line_number": null,
+          "layer": "CORE"
+        }
+      ],
+      "parallel": false,
+      "parallel_subgroups": [],
+      "validation_gate": {
+        "gate_id": "VG-01",
+        "gate_type": "UNIT_TESTS",
+        "command": "python -m pytest tests/ -v",
+        "description": "Execute unit test suite to verify core service invariants for Stage 1.",
+        "blocking": true,
+        "required_pass_rate": 100.0,
+        "timeout_seconds": 30.0,
+        "target_files": [
+          "custom_path/nested/something.unknown"
+        ]
+      },
+      "validation_gates": [
+        {
+          "gate_id": "VG-01",
+          "gate_type": "UNIT_TESTS",
+          "command": "python -m pytest tests/ -v",
+          "description": "Execute unit test suite to verify core service invariants for Stage 1.",
+          "blocking": true,
+          "required_pass_rate": 100.0,
+          "timeout_seconds": 30.0,
+          "target_files": [
+            "custom_path/nested/something.unknown"
+          ]
+        }
+      ],
+      "rollback_checkpoint": {
+        "point_id": "rollback-stage-1",
+        "stage_number": 1,
+        "git_reference": "HEAD",
+        "modified_files": [
+          "custom_path/nested/something.unknown"
+        ],
+        "inverse_operations": [
+          "REVERT_CHANGES on 'custom_path/nested/something.unknown'"
+        ],
+        "recovery_strategy": "Git soft revert for Stage 1 modified files: custom_path/nested/something.unknown.",
+        "validation_state": "CLEAN",
+        "timestamp": "2026-10-06T20:10:19.091883+00:00",
+        "auto_recover": true
+      },
+      "estimated_time": 10.0,
+      "status": "PENDING",
+      "commit_entry": {
+        "commit_id": "commit-stage-1",
+        "title": "feat(core): apply stage 1 Core layer changes",
+        "message": "Implemented 1 operations across 1 files in Stage 1 (CORE).",
+        "files": [
+          "custom_path/nested/something.unknown"
+        ],
+        "stage_number": 1,
+        "layer": "CORE"
+      }
+    }
+  ],
+  "dependency_graph": {
+    "unknown_op": []
+  },
+  "parallel_groups": [],
+  "rollback_plan": [
+    {
+      "point_id": "rollback-stage-1",
+      "stage_number": 1,
+      "git_reference": "HEAD",
+      "modified_files": [
+        "custom_path/nested/something.unknown"
+      ],
+      "inverse_operations": [
+        "REVERT_CHANGES on 'custom_path/nested/something.unknown'"
+      ],
+      "recovery_strategy": "Git soft revert for Stage 1 modified files: custom_path/nested/something.unknown.",
+      "validation_state": "CLEAN",
+      "timestamp": "2026-10-06T20:10:19.091883+00:00",
+      "auto_recover": true
+    }
+  ],
+  "commit_plan": [
+    {
+      "commit_id": "commit-stage-1",
+      "title": "feat(core): apply stage 1 Core layer changes",
+      "message": "Implemented 1 operations across 1 files in Stage 1 (CORE).",
+      "files": [
+        "custom_path/nested/something.unknown"
+      ],
+      "stage_number": 1,
+      "layer": "CORE"
+    }
+  ],
+  "validation_plan": [
+    {
+      "gate_id": "gate-compile",
+      "gate_type": "COMPILE",
+      "command": "python -m py_compile",
+      "description": "Syntax & Compilation Check",
+      "blocking": true,
+      "required_pass_rate": 100.0,
+      "timeout_seconds": 30.0,
+      "target_files": []
+    },
+    {
+      "gate_id": "VG-01",
+      "gate_type": "UNIT_TESTS",
+      "command": "python -m pytest tests/ -v",
+      "description": "Execute unit test suite to verify core service invariants for Stage 1.",
+      "blocking": true,
+      "required_pass_rate": 100.0,
+      "timeout_seconds": 30.0,
+      "target_files": [
+        "custom_path/nested/something.unknown"
+      ]
+    },
+    {
+      "gate_id": "gate-lint",
+      "gate_type": "LINT",
+      "command": "flake8 . --count",
+      "description": "Static Linting Verification",
+      "blocking": true,
+      "required_pass_rate": 100.0,
+      "timeout_seconds": 30.0,
+      "target_files": []
+    },
+    {
+      "gate_id": "gate-git-clean",
+      "gate_type": "GIT_STATUS_CLEAN",
+      "command": "git status --porcelain",
+      "description": "Working Tree Hygiene Check",
+      "blocking": true,
+      "required_pass_rate": 100.0,
+      "timeout_seconds": 30.0,
+      "target_files": []
+    }
+  ],
+  "estimated_duration": 18.0,
+  "critical_path": [
+    "unknown_op"
+  ],
+  "execution_summary": "ChangeExecutionPlan generated with 1 stages and 1 operations. Critical path has 1 operations (~18.0m). Risk: LOW (Confidence: 95%).",
+  "risk": "LOW",
+  "confidence": 0.95,
+  "cost_breakdown": {
+    "editing_time_minutes": 10.0,
+    "testing_time_minutes": 5.0,
+    "review_time_minutes": 3.0,
+    "rollback_cost_minutes": 1.0,
+    "merge_cost_minutes": 1.0,
+    "critical_path_minutes": 10.0,
+    "overall_duration_minutes": 18.0
+  },
+  "conflict_report": [],
+  "timestamp": "2026-10-06T20:10:19.092442+00:00"
+}

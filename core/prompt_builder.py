@@ -70,6 +70,15 @@ from core.architecture_manager import (
     DesignViolation,
     ValidationReport,
 )
+from core.change_execution_planner import (
+    ChangeExecutionPlan,
+    ChangeExecutionPlanner,
+    ChangeOperation,
+    CommitPlanEntry,
+    ExecutionStage,
+    RollbackPoint,
+    ValidationGate,
+)
 from core.engineering_decision_engine import (
     DecisionEvaluation,
     DecisionOption,
@@ -88,6 +97,14 @@ from core.refactoring_engine import (
     TechnicalDebtIssue,
 )
 from core.symbol_graph import SymbolGraph
+from core.quality_models import (
+    QualityAssessmentResult,
+    QualityGateResult,
+    QualityGateStatus,
+    QualityIssue,
+    PredictiveRiskScores,
+)
+from core.predictive_quality_engine import PredictiveQualityEngine
 
 
 class PromptBuilder:
@@ -97,8 +114,8 @@ class PromptBuilder:
     (minimal relevant code slices), ImpactAnalyzer (blast radius & breaking change risks),
     RefactoringPlanner (safe modification execution plan), RepositoryAnalyzer
     (repository architecture intelligence), ChangePlanner (semantic change blueprint),
-    ArchitectureManager (ADR engine & design validation), and EngineeringDecisionEngine
-    (tradeoff evaluation & optimal strategy selection).
+    ArchitectureManager (ADR engine & design validation), EngineeringDecisionEngine
+    (tradeoff evaluation & optimal strategy selection), and PredictiveQualityEngine (v2.7).
     """
 
     def __init__(
@@ -114,6 +131,8 @@ class PromptBuilder:
         architecture_manager: Optional[ArchitectureManager] = None,
         decision_engine: Optional[EngineeringDecisionEngine] = None,
         refactoring_engine: Optional[RefactoringEngine] = None,
+        change_execution_planner: Optional[ChangeExecutionPlanner] = None,
+        predictive_quality_engine: Optional[PredictiveQualityEngine] = None,
         symbol_graph: Optional[SymbolGraph] = None,
     ) -> None:
         """
@@ -130,6 +149,8 @@ class PromptBuilder:
             change_planner: Optional ChangePlanner instance.
             architecture_manager: Optional ArchitectureManager instance.
             decision_engine: Optional EngineeringDecisionEngine instance.
+            refactoring_engine: Optional RefactoringEngine instance.
+            change_execution_planner: Optional ChangeExecutionPlanner instance.
             symbol_graph: Optional SymbolGraph instance used to construct subsystems.
         """
         self.max_file_chars = max_file_chars
@@ -201,6 +222,17 @@ class PromptBuilder:
             self.refactoring_engine = RefactoringEngine(symbol_graph=symbol_graph)
         else:
             self.refactoring_engine = None
+
+        # Autonomous Change Execution Planner (v2.0)
+        if change_execution_planner is not None:
+            self.change_execution_planner = change_execution_planner
+        elif symbol_graph is not None:
+            self.change_execution_planner = ChangeExecutionPlanner(symbol_graph=symbol_graph)
+        else:
+            self.change_execution_planner = None
+
+        # Predictive Failure Prevention & Quality Intelligence Engine (v2.7)
+        self.predictive_quality_engine = predictive_quality_engine
 
 
 
@@ -693,6 +725,209 @@ class PromptBuilder:
 
         return "\n".join(lines)
 
+    def build_change_execution_plan_section(
+        self,
+        context: Dict[str, Any],
+        task: Union[Task, Dict[str, Any]],
+    ) -> Optional[str]:
+        """
+        Constructs the CHANGE EXECUTION PLAN section detailing ordered execution stages,
+        parallel batches, validation gates, Git commit strategy, and rollback points.
+        """
+        plan: Optional[ChangeExecutionPlan] = None
+
+        if "change_execution_plan" in context and isinstance(context["change_execution_plan"], ChangeExecutionPlan):
+            plan = context["change_execution_plan"]
+        elif "change_execution_planner" in context and hasattr(context["change_execution_planner"], "plan_changes"):
+            plan = context["change_execution_planner"].plan_changes(
+                task=task,
+                impact_report=context.get("impact_report"),
+                repository_overview=context.get("repository_analysis"),
+                architecture_manager=self.architecture_manager or context.get("architecture_manager"),
+                refactoring_engine=self.refactoring_engine or context.get("refactoring_engine"),
+                decision_engine=self.decision_engine or context.get("decision_engine"),
+                symbol_graph=context.get("symbol_graph"),
+                context=context,
+            )
+        elif self.change_execution_planner is not None:
+            plan = self.change_execution_planner.plan_changes(
+                task=task,
+                impact_report=context.get("impact_report"),
+                repository_overview=context.get("repository_analysis"),
+                architecture_manager=self.architecture_manager or context.get("architecture_manager"),
+                refactoring_engine=self.refactoring_engine or context.get("refactoring_engine"),
+                decision_engine=self.decision_engine or context.get("decision_engine"),
+                symbol_graph=context.get("symbol_graph"),
+                context=context,
+            )
+        elif "symbol_graph" in context and context["symbol_graph"] is not None:
+            planner = ChangeExecutionPlanner(symbol_graph=context["symbol_graph"])
+            plan = planner.plan_changes(
+                task=task,
+                impact_report=context.get("impact_report"),
+                repository_overview=context.get("repository_analysis"),
+                architecture_manager=self.architecture_manager or context.get("architecture_manager"),
+                refactoring_engine=self.refactoring_engine or context.get("refactoring_engine"),
+                decision_engine=self.decision_engine or context.get("decision_engine"),
+                symbol_graph=context.get("symbol_graph"),
+                context=context,
+            )
+
+        if not plan:
+            return None
+
+        lines: List[str] = [
+            "================================================================================",
+            "CHANGE EXECUTION PLAN",
+            "================================================================================",
+            f"Plan ID        : {plan.plan_id} (Risk: {plan.risk} | Confidence: {plan.confidence:.0%})",
+            f"Estimated Time : {plan.estimated_duration:.1f} minutes",
+        ]
+
+        if plan.critical_path:
+            lines.append(f"Critical Path  : {' -> '.join(plan.critical_path[:6])}")
+
+        lines.append("\nExecution Order:")
+        for stage in plan.ordered_stages:
+            par_label = "PARALLEL" if stage.parallel else "SEQUENTIAL"
+            lines.append(f"\nStage {stage.stage_number}: {stage.title} [{par_label}] (~{stage.estimated_time:.1f}m)")
+            for op in stage.operations:
+                sym_str = f" ({op.symbol})" if op.symbol else ""
+                lines.append(f"- Action: {op.operation_type} on '{op.file}'{sym_str}")
+                if op.reason:
+                    lines.append(f"  Reason: {op.reason}")
+
+            if stage.validation_gates:
+                for g in stage.validation_gates:
+                    lines.append(f"- Validation Gate: {g.gate_type} ({g.command})")
+            elif stage.validation_gate:
+                lines.append(f"- Validation Gate: {stage.validation_gate.gate_type} ({stage.validation_gate.command})")
+
+            if stage.commit_entry:
+                lines.append(f"- Commit: {stage.commit_entry.title} - {stage.commit_entry.message}")
+
+            if stage.rollback_checkpoint:
+                lines.append(f"- Rollback Point: {stage.rollback_checkpoint.point_id} ({stage.rollback_checkpoint.recovery_strategy})")
+
+        return "\n".join(lines)
+
+    def build_execution_safety_policy_section(
+        self,
+        context: Dict[str, Any],
+        task: Union[Task, Dict[str, Any]],
+    ) -> Optional[str]:
+        """
+        Constructs the EXECUTION SAFETY & TRANSACTION POLICY section (v2.1).
+        Declares explicit sandbox boundaries, allowed target paths, and rollback policies.
+        """
+        tx_id = context.get("transaction_id", "TX-PENDING")
+        mode = context.get("execution_mode", "dry_run").upper()
+        root = context.get("workspace_root", "projects")
+
+        target_files: List[str] = []
+        if isinstance(task, dict):
+            target_files = task.get("estimated_files", []) or task.get("affected_files", [])
+        elif hasattr(task, "estimated_files"):
+            target_files = getattr(task, "estimated_files", []) or getattr(task, "affected_files", [])
+
+        lines = [
+            "================================================================================",
+            "EXECUTION SAFETY & TRANSACTION POLICY",
+            "================================================================================",
+            f"Transaction ID : {tx_id} | Execution Mode: {mode}",
+            f"Workspace Root : {root}",
+            "Security Notice: The LLM proposes code modifications but DOES NOT authorize execution.",
+            "All mutations are enforced by sandbox path containment and pre-mutation snapshots.",
+        ]
+
+        if target_files:
+            lines.append("\nAuthorized Target Files:")
+            for f in target_files:
+                lines.append(f"  - {f}")
+
+        lines.extend([
+            "\nRestricted Paths:",
+            "  - .git/*, memory/*, core/*, sensitive credentials (.env, *.pem, *.key)",
+            "Command Policy: Subprocess argument arrays only (no shell=True).",
+            "Rollback Policy: Automated verified restoration from SHA256 snapshots upon validation failure.",
+        ])
+
+        return "\n".join(lines)
+
+    def build_predictive_quality_section(
+        self,
+        context: Dict[str, Any],
+        task: Optional[Union[Task, Dict[str, Any]]] = None,
+    ) -> Optional[str]:
+        """
+        Constructs the PREDICTIVE FAILURE PREVENTION & QUALITY INTELLIGENCE section (v2.7).
+        Provides maintainability index, predicted regression risks, security confidence,
+        quality gate verdict, and proactive recommendations before code generation.
+        """
+        res: Optional[Any] = context.get("quality_assessment") or context.get("predictive_quality_result")
+        if not res and self.predictive_quality_engine:
+            try:
+                task_id = str(getattr(task, "id", "")) if task else None
+                res = self.predictive_quality_engine.assess_workspace(
+                    files_content=context.get("project_files"),
+                    task_id=task_id,
+                )
+                context["quality_assessment"] = res
+            except Exception:
+                pass
+
+        if not res:
+            return None
+
+        lines = [
+            "================================================================================",
+            "PREDICTIVE FAILURE PREVENTION & QUALITY INTELLIGENCE (v2.7)",
+            "================================================================================",
+        ]
+
+        gate_status = getattr(res, "gate_result", None)
+        if gate_status:
+            status_val = getattr(gate_status, "status", "PASSED")
+            if hasattr(status_val, "value"):
+                status_val = status_val.value
+            lines.append(f"Quality Gate Status : {status_val}")
+
+        comp = getattr(res, "aggregate_complexity", None)
+        risk = getattr(res, "risk_scores", None)
+
+        if comp:
+            lines.append(
+                f"Maintainability Index : {comp.maintainability_index:.1f}/100 | "
+                f"Avg Cyclomatic: {comp.cyclomatic_complexity:.1f} | "
+                f"Max Nesting: {comp.max_nesting_depth}"
+            )
+        if risk:
+            lines.append(
+                f"Predicted Failure Prob : {risk.future_failure_probability*100:.1f}% | "
+                f"Regression Prob: {risk.regression_probability*100:.1f}% | "
+                f"Security Confidence: {risk.security_confidence*100:.1f}% | "
+                f"Composite Risk Score: {risk.composite_risk_score:.1f}/100"
+            )
+
+        issues = getattr(res, "issues", [])
+        if issues:
+            lines.append("\nIdentified Architectural & Code Quality Risks:")
+            for idx, iss in enumerate(issues[:8], 1):
+                sev = getattr(getattr(iss, "severity", None), "value", str(getattr(iss, "severity", "WARNING")))
+                loc = f"{getattr(iss, 'file_path', 'workspace')}:{getattr(iss, 'line_number', 1)}"
+                lines.append(f"  {idx}. [{sev}] ({loc}) {getattr(iss, 'description', '')}")
+                if getattr(iss, "remediation", ""):
+                    lines.append(f"     Remediation: {iss.remediation}")
+
+        recs = getattr(res, "remediation_suggestions", []) or getattr(res, "recommendations", [])
+        if recs:
+            lines.append("\nProactive Engineering Recommendations:")
+            for r in recs[:5]:
+                lines.append(f"  * {r}")
+
+        return "\n".join(lines)
+
+
 
     def build_code_context_section(
         self,
@@ -1156,6 +1391,157 @@ class PromptBuilder:
             "Critical: Ensure all special characters and newlines in file contents are properly escaped as valid JSON strings."
         )
 
+    def build_collaboration_section(
+        self,
+        context: Dict[str, Any],
+        task: Optional[Any] = None,
+    ) -> Optional[str]:
+        """
+        Constructs the MULTI-AGENT COLLABORATION CONTEXT section (v2.8).
+        Injects:
+        - Agent role & specialization
+        - Shared architectural & engineering decisions
+        - Current inter-agent discussions
+        - Pending blockers
+        - Consensus history & accepted proposals
+        - Active reviewers & quality gates
+        """
+        collab_data = context.get("collaboration_context") or {}
+        if not collab_data and not (task and getattr(task, "assigned_agent", None)):
+            return None
+
+        agent_role = collab_data.get("agent_role") or (getattr(task, "assigned_agent", None) if task else None) or "Specialized Engineer"
+        shared_decisions = collab_data.get("shared_decisions", [])
+        current_discussion = collab_data.get("current_discussion", [])
+        pending_blockers = collab_data.get("pending_blockers", [])
+        consensus_history = collab_data.get("consensus_history", [])
+        active_reviewers = collab_data.get("active_reviewers", [])
+
+        lines = [
+            "================================================================================",
+            "MULTI-AGENT COLLABORATION CONTEXT (v2.8)",
+            "================================================================================",
+            f"Active Agent Role & Specialization : {agent_role}",
+        ]
+
+        if shared_decisions:
+            lines.append("\n[Shared Organizational Decisions]")
+            for dec in shared_decisions[:5]:
+                lines.append(f"  * {dec}")
+
+        if pending_blockers:
+            lines.append("\n[Pending Blockers & Constraints]")
+            for blk in pending_blockers:
+                lines.append(f"  ! BLOCKER: {blk}")
+
+        if consensus_history:
+            lines.append("\n[Consensus Decisions & Accepted Proposals]")
+            for ch in consensus_history[:4]:
+                lines.append(f"  ✓ {ch}")
+
+        if current_discussion:
+            lines.append("\n[Inter-Agent Communication & Recent Messages]")
+            for disc in current_discussion[:5]:
+                lines.append(f"  > {disc}")
+
+        if active_reviewers:
+            lines.append("\n[Active Reviewers & Quality Validators]")
+            lines.append("  " + ", ".join(active_reviewers))
+
+        return "\n".join(lines)
+
+    def build_enterprise_section(
+        self,
+        context: Dict[str, Any],
+        task: Optional[Any] = None,
+    ) -> Optional[str]:
+        """
+        Constructs the ENTERPRISE ORGANIZATION & EXECUTIVE GOVERNANCE CONTEXT section (v3.0).
+        """
+        enterprise_info = context.get("enterprise")
+        if not enterprise_info and "company_overview" in context:
+            enterprise_info = context["company_overview"]
+
+        if not enterprise_info and not context.get("enterprise_company"):
+            return None
+
+        company_name = "AutoDev Autonomous Technologies Inc."
+        if isinstance(enterprise_info, dict):
+            company_name = enterprise_info.get("company_name", company_name)
+
+        lines: List[str] = [
+            "================================================================================",
+            "ENTERPRISE ORGANIZATION & EXECUTIVE GOVERNANCE (v3.0)",
+            "================================================================================",
+            f"Organization         : {company_name}",
+            "Corporate Structure  : Autonomous AI Software Company (15 C-Suite Roles, 8 Teams)",
+            "Executive Mandate    : Complete Lifecycle Ownership (Vision -> Product -> QA -> Release -> Support)",
+            "Architecture Pillars : SOLID, DDD, Layering, Scalability, Security, Performance (Target: >=85.0)",
+            "Governance Standards : SOC2 Type II, GDPR, ISO 27001 Cryptographic SHA-256 Audit Trail",
+            "Release Gates        : Automated Unit, Integration, Security Scan, and 2+ Executive Approvals",
+        ]
+        return "\n".join(lines)
+
+    def build_learning_section(
+        self,
+        context: Dict[str, Any],
+        task: Optional[Any] = None,
+    ) -> Optional[str]:
+        """
+        Constructs Section: AUTONOMOUS LEARNING, REFLECTION & PATTERN DISCOVERY (v3.1).
+        Injects:
+        - Discovered engineering patterns relevant to current task
+        - Learned bug fix insights
+        - Playbook guidance
+        - Reflection heuristics and quality guardrails
+        """
+        learning_info = context.get("learning_context") or context.get("learning_knowledge") or context.get("patterns")
+        if not learning_info:
+            return None
+
+        lines: List[str] = [
+            "================================================================================",
+            "AUTONOMOUS LEARNING, REFLECTION & PATTERN DISCOVERY (v3.1)",
+            "================================================================================",
+        ]
+
+        if isinstance(learning_info, dict):
+            patterns = learning_info.get("patterns", [])
+            playbook = learning_info.get("playbook")
+            heuristics = learning_info.get("heuristics", [])
+            reflection = learning_info.get("recent_reflection")
+
+            if patterns:
+                lines.append("[Learned Engineering Patterns]")
+                for p in patterns[:3]:
+                    name = p.get("name", "Pattern") if isinstance(p, dict) else getattr(p, "name", "Pattern")
+                    desc = p.get("description", "") if isinstance(p, dict) else getattr(p, "description", "")
+                    conf = p.get("confidence", 1.0) if isinstance(p, dict) else getattr(p, "confidence", 1.0)
+                    lines.append(f"  * {name} (Conf: {conf:.2f}): {desc}")
+
+            if playbook:
+                arch = playbook.get("archetype", "General") if isinstance(playbook, dict) else getattr(playbook, "archetype", "General")
+                lines.append(f"\n[Active Engineering Playbook: {arch}]")
+                seq = playbook.get("recommended_sequence", []) if isinstance(playbook, dict) else getattr(playbook, "recommended_sequence", [])
+                for s in seq[:3]:
+                    lines.append(f"  -> {s}")
+
+            if heuristics:
+                lines.append("\n[Historical Bug Prevention & Self-Correction Heuristics]")
+                for h in heuristics[:3]:
+                    lines.append(f"  ! {h}")
+
+            if reflection:
+                summary = reflection.get("summary", "") if isinstance(reflection, dict) else getattr(reflection, "summary", "")
+                if summary:
+                    lines.append(f"\n[Recent Autonomous Reflection Insight]: {summary}")
+        elif isinstance(learning_info, list):
+            lines.append("[Discovered Engineering Patterns]")
+            for p in learning_info[:3]:
+                lines.append(f"  * {p}")
+
+        return "\n".join(lines)
+
     # -------------------------------------------------------------------------
     # Master Build Method
     # -------------------------------------------------------------------------
@@ -1166,22 +1552,23 @@ class PromptBuilder:
         task: Union[Task, Dict[str, Any]],
     ) -> str:
         """
-        Assembles all prompt sections into a unified 13-section engineering prompt.
+        Assembles all prompt sections into a unified engineering prompt.
 
-        Layout (v1.5):
+        Layout:
         1. SYSTEM ROLE
         2. PROJECT INFORMATION
         3. TECHNOLOGY STACK
         4. CURRENT DEVELOPMENT PHASE
         5. RELEVANT PROJECT MEMORY (if available)
-        6. CURRENT TASK TO IMPLEMENT
-        7. CODE IMPACT ANALYSIS (if available)
-        8. RELEVANT CODE CONTEXT (if available)
-        9. RETRY & DEFECT REMEDIATION FEEDBACK (if retry attempt)
-        10. EXISTING DIRECTORY STRUCTURE
-        11. ADDITIONAL / EXISTING SOURCE FILES
-        12. ENGINEERING CONSTRAINTS
-        13. REQUIRED JSON OUTPUT FORMAT
+        6. MULTI-AGENT COLLABORATION CONTEXT (v2.8, if available)
+        7. CURRENT TASK TO IMPLEMENT
+        8. CODE IMPACT ANALYSIS (if available)
+        9. RELEVANT CODE CONTEXT (if available)
+        10. RETRY & DEFECT REMEDIATION FEEDBACK (if retry attempt)
+        11. EXISTING DIRECTORY STRUCTURE
+        12. ADDITIONAL / EXISTING SOURCE FILES
+        13. ENGINEERING CONSTRAINTS
+        14. REQUIRED JSON OUTPUT FORMAT
 
         Args:
             context: Context dictionary produced by ContextBuilder.
@@ -1196,6 +1583,11 @@ class PromptBuilder:
             self.build_technology_section(context),
             self.build_phase_section(context),
         ]
+
+        # Multi-Agent Collaboration Context (v2.8)
+        collab_sec = self.build_collaboration_section(context, task)
+        if collab_sec:
+            sections.append(collab_sec)
 
         # Project Architecture Intelligence (v1.7)
         arch_sec = self.build_architecture_section(context, task)
@@ -1241,6 +1633,21 @@ class PromptBuilder:
         if change_plan_sec:
             sections.append(change_plan_sec)
 
+        # Autonomous Change Execution Plan (v2.0)
+        change_exec_plan_sec = self.build_change_execution_plan_section(context, task)
+        if change_exec_plan_sec:
+            sections.append(change_exec_plan_sec)
+
+        # Predictive Failure Prevention & Quality Intelligence (v2.7)
+        quality_sec = self.build_predictive_quality_section(context, task)
+        if quality_sec:
+            sections.append(quality_sec)
+
+        # Execution Safety & Transaction Policy (v2.1)
+        exec_safety_sec = self.build_execution_safety_policy_section(context, task)
+        if exec_safety_sec:
+            sections.append(exec_safety_sec)
+
 
         # 8. Relevant Code Context
         code_context_sec = self.build_code_context_section(context, task)
@@ -1259,6 +1666,21 @@ class PromptBuilder:
         feedback_sec = self.build_feedback_section(context)
         if feedback_sec:
             sections.append(feedback_sec)
+
+        # 9.5. Distributed Cluster Execution Context (v2.9)
+        cluster_sec = self.build_cluster_context_section(context, task)
+        if cluster_sec:
+            sections.append(cluster_sec)
+
+        # 9.8. Enterprise Organization & Executive Governance (v3.0)
+        enterprise_sec = self.build_enterprise_section(context, task)
+        if enterprise_sec:
+            sections.append(enterprise_sec)
+
+        # 9.9. Autonomous Learning, Reflection & Pattern Discovery (v3.1)
+        learning_sec = self.build_learning_section(context, task)
+        if learning_sec:
+            sections.append(learning_sec)
 
         # 10. Existing Directory Structure
         sections.append(self.build_directory_section(context.get("directory_tree", [])))
@@ -1279,6 +1701,118 @@ class PromptBuilder:
         ])
 
         return "\n\n".join(sections)
+
+    def build_cluster_context_section(
+        self,
+        context: Dict[str, Any],
+        task: Optional[Union[Task, Dict[str, Any]]] = None,
+    ) -> Optional[str]:
+        """
+        Constructs Section 7: DISTRIBUTED CLUSTER EXECUTION CONTEXT (v2.9).
+        Details cluster topology, assigned worker node, distributed memory,
+        remote artifact synchronization, and real-time telemetry.
+        """
+        cluster_info = context.get("cluster_info") or context.get("cluster_context") or context.get("cluster_state")
+        if not cluster_info:
+            return None
+
+        cluster_name = cluster_info.get("cluster_name", "autodev-cluster")
+        leader_id = cluster_info.get("leader_id", "master-node-01")
+        epoch = cluster_info.get("epoch", 1)
+        node_count = cluster_info.get("node_count", 1)
+        healthy_workers = cluster_info.get("healthy_workers", 1)
+        assigned_worker = cluster_info.get("assigned_worker_id", "local_worker")
+        worker_caps = cluster_info.get("worker_capabilities", ["general"])
+        caps_str = ", ".join(worker_caps) if isinstance(worker_caps, (list, set)) else str(worker_caps)
+
+        # Distributed memory keys
+        shared_memory = cluster_info.get("shared_memory", {})
+        mem_lines = [f"  - `{k}`: {v}" for k, v in list(shared_memory.items())[:5]] if shared_memory else ["  - (No shared cluster memory keys active)"]
+        mem_text = "\n".join(mem_lines)
+
+        # Telemetry
+        telemetry = cluster_info.get("telemetry", {})
+        cpu = telemetry.get("aggregate_cpu_utilization", 0.0)
+        mem = telemetry.get("aggregate_memory_utilization", 0.0)
+        eff = telemetry.get("parallel_efficiency", 1.0) * 100.0
+
+        return (
+            "================================================================================\n"
+            "7. DISTRIBUTED CLUSTER EXECUTION CONTEXT (AutoDev v2.9)\n"
+            "================================================================================\n"
+            f"Cluster Topology   : {cluster_name} (Leader: {leader_id}, Epoch: {epoch})\n"
+            f"Active Fleet       : {node_count} Total Nodes ({healthy_workers} Healthy Workers)\n"
+            f"Assigned Worker    : {assigned_worker} (Capabilities: {caps_str})\n"
+            f"Cluster Telemetry  : CPU {cpu}% | RAM {mem}% | Parallel Efficiency {eff:.1f}%\n\n"
+            f"Shared Cluster Memory Context:\n{mem_text}\n\n"
+            "Execution Directives:\n"
+            "  1. Generate production-quality code adhering strictly to assigned worker capability.\n"
+            "  2. Output clean file contents for automated Content-Addressable Artifact Sync (CAS).\n"
+            "  3. Coordinate file modifications safely within cluster lock leases."
+        )
+
+    def build_worker_execution_contract(
+        self,
+        transaction_id: str,
+        task_id: str,
+        worker_id: str,
+        authorized_paths: List[str],
+        runtime_profile: str = "restricted",
+        expected_artifacts: Optional[List[str]] = None,
+        validation_gates: Optional[List[str]] = None,
+        fencing_term: Optional[int] = None,
+        fencing_generation: Optional[int] = None,
+        chunk_sync_enabled: bool = True,
+        debug_session_id: Optional[str] = None,
+        p2p_distribution_enabled: bool = False,
+        ebpf_monitoring_active: bool = False,
+    ) -> str:
+        """
+        Synthesizes an advisory execution contract prompt for distributed/remote worker agents (v2.5).
+        """
+        paths_str = "\n".join(f"- `{p}`" for p in authorized_paths) if authorized_paths else "- (No write paths authorized)"
+        arts_str = "\n".join(f"- `{a}`" for a in (expected_artifacts or [])) if expected_artifacts else "- Standard task result manifest and source diffs"
+        gates_str = "\n".join(f"- `{g}`" for g in (validation_gates or [])) if validation_gates else "- Unit tests and syntax/linter verification"
+        fencing_str = f"- **Coordinator Fencing Term**: `{fencing_term}` (Generation `{fencing_generation or 1}`) — Stale tokens rejected at mutation boundary" if fencing_term is not None else "- **Coordinator Mode**: Local authoritative consensus"
+        debug_str = f"- **Active Debug Session**: `{debug_session_id}` (WebRTC low-latency streaming enabled)" if debug_session_id else "- **Interactive Terminal**: Disabled / Disconnected"
+        p2p_str = f"- **P2P Fleet Artifact Exchange**: Enabled (direct chunk sharing between authorized worker peers)" if p2p_distribution_enabled else "- **Artifact Distribution**: Standard coordinator CAS"
+        ebpf_str = f"- **Kernel Isolation Backend**: eBPF syscall & tracepoint monitoring ACTIVE (Fail-Closed on violation)" if ebpf_monitoring_active else f"- **Sandbox Security Profile**: `{runtime_profile}` (OS/container boundary)"
+
+        return f"""## DISTRIBUTED WORKER EXECUTION CONTRACT (AutoDev v2.5)
+
+### 1. Identity, Consensus & Fencing Boundary
+- **Transaction ID**: `{transaction_id}`
+- **Task ID**: `{task_id}`
+- **Assigned Worker ID**: `{worker_id}`
+- **Runtime Isolation Profile**: `{runtime_profile}`
+{fencing_str}
+{ebpf_str}
+{debug_str}
+
+### 2. Authorized Workspace Scopes
+You are strictly authorized to modify only the following paths. Any changes outside these boundaries will be rejected by the coordinator artifact verifier:
+{paths_str}
+
+### 3. Expected Artifact Outputs & Differential Sync
+- **Differential Artifact Sync**: `{"FastCDC chunk-level CAS enabled" if chunk_sync_enabled else "Standard whole-file transfer"}`
+{p2p_str}
+{arts_str}
+
+### 4. Mandatory Post-Execution Validation Gates
+{gates_str}
+
+### 5. Non-Negotiable Safety & Submission Rules
+1. Never attempt to modify coordinator configuration, certificates, private keys, or `.git` internals.
+2. All modified and created files must be described in your returned artifact manifest with accurate SHA-256 digests.
+3. Your execution is sandboxed under profile `{runtime_profile}`. Do not attempt privilege escalation, unauthorized host path access, or prohibited network egress.
+4. If an unexpected conflict, lease expiration, or unrecoverable error occurs, report execution failure with structured diagnostic details.
+5. All interactive terminal sessions run within isolated sandbox containers. Host execution is strictly prohibited.
+"""
+
+
+
+    # Alias for contract synthesis
+    synthesize_worker_execution_contract = build_worker_execution_contract
 
 
 if __name__ == "__main__":

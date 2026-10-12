@@ -1,0 +1,15 @@
+{
+  "870589cc81cf4fdc": {
+    "image_tag": "autodev-env-python:3.12",
+    "image_digest": "sha256:99bc9bf1e8b71b0618a7dc6db9100a19bb18b0cc2dcdcc180f349d44729827e1",
+    "cache_key": "870589cc81cf4fdc",
+    "base_image": "python:3.12-slim",
+    "built_at": "2026-10-09T04:23:22.809348+00:00",
+    "build_duration_seconds": 0.0,
+    "manifest_hashes": {
+      "requirements.txt": "cc37bc5434d04a56f9050478d16f102b97395fa5b89487e16e7cb59f6e536a74"
+    },
+    "builder_version": "autodev-2.3.0",
+    "is_cached": false
+  }
+}
